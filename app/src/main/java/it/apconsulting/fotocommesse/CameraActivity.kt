@@ -88,7 +88,7 @@ class CameraActivity : AppCompatActivity() {
         binding.btnShoot.isEnabled = false
 
         val nextIdx = photoCount + 1
-        val contentValues = PhotoStorage.buildContentValues(commessa, nextIdx)
+        val contentValues = PhotoStorage.buildContentValues(this, commessa, nextIdx)
 
         val outputOptions = ImageCapture.OutputFileOptions.Builder(
             contentResolver,
