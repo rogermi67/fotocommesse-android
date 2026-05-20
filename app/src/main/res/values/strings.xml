@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FotoCommesse</string>
+    <string name="subtitle">Foto blocchi con numero di commessa</string>
+    <string name="hint_commessa">Numero commessa (es. 12345)</string>
+    <string name="btn_start">INIZIA SCATTI</string>
+    <string name="btn_fine">FINE</string>
+    <string name="section_recenti">Commesse recenti</string>
+    <string name="no_data">Nessuna foto ancora.\nInserisci un numero di commessa e inizia.</string>
+</resources>

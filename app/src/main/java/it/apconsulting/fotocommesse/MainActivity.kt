@@ -1,0 +1,135 @@
+package it.apconsulting.fotocommesse
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.View
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import it.apconsulting.fotocommesse.databinding.ActivityMainBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityMainBinding
+
+    private val requestPermissions =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+            val cameraGranted = results[Manifest.permission.CAMERA] ?: false
+            if (!cameraGranted) {
+                Toast.makeText(
+                    this,
+                    "Il permesso fotocamera è obbligatorio",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            refreshList()
+        }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        binding.btnStart.isEnabled = false
+        binding.etCommessa.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                binding.btnStart.isEnabled = !s.isNullOrBlank()
+            }
+        })
+
+        binding.btnStart.setOnClickListener { onStartClicked() }
+
+        binding.rvRecenti.layoutManager = LinearLayoutManager(this)
+
+        ensurePermissions()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (hasCameraPermission() && hasStoragePermission()) {
+            refreshList()
+        }
+    }
+
+    private fun onStartClicked() {
+        val raw = binding.etCommessa.text.toString().trim()
+        if (raw.isBlank()) return
+        val sanitized = PhotoStorage.sanitize(raw)
+
+        if (sanitized != raw) {
+            AlertDialog.Builder(this)
+                .setTitle("Commessa con caratteri non validi")
+                .setMessage("Verrà salvata come \"$sanitized\".\nProcedere?")
+                .setPositiveButton("Conferma") { _, _ -> launchCamera(sanitized) }
+                .setNegativeButton("Annulla", null)
+                .show()
+        } else {
+            launchCamera(sanitized)
+        }
+    }
+
+    private fun launchCamera(commessa: String) {
+        val intent = Intent(this, CameraActivity::class.java).apply {
+            putExtra(CameraActivity.EXTRA_COMMESSA, commessa)
+        }
+        startActivity(intent)
+    }
+
+    private fun refreshList() {
+        lifecycleScope.launch {
+            val counts = withContext(Dispatchers.IO) {
+                PhotoStorage.listCommesseWithCount(this@MainActivity)
+            }
+            // Order by commessa name descending (most recent typically have higher numbers)
+            val items = counts.entries.sortedByDescending { it.key }
+            binding.rvRecenti.adapter = CommesseAdapter(items) { commessa ->
+                binding.etCommessa.setText(commessa)
+                binding.etCommessa.setSelection(commessa.length)
+            }
+            binding.tvNoData.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+            binding.tvTotalCount.text =
+                "${items.size} commesse, ${counts.values.sum()} foto totali"
+        }
+    }
+
+    private fun ensurePermissions() {
+        val needed = mutableListOf<String>()
+        if (!hasCameraPermission()) needed += Manifest.permission.CAMERA
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            needed += Manifest.permission.READ_MEDIA_IMAGES
+        }
+        if (needed.isNotEmpty()) {
+            requestPermissions.launch(needed.toTypedArray())
+        }
+    }
+
+    private fun hasCameraPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun hasStoragePermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) ==
+                PackageManager.PERMISSION_GRANTED
+        } else {
+            true // Android 10-12: scoped storage, we only read our own folder entries
+        }
+    }
+}
