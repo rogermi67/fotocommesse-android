@@ -7,19 +7,24 @@ import android.provider.MediaStore
 
 object PhotoStorage {
 
-    const val FOLDER_NAME = "FotoCommesse"
-    val RELATIVE_PATH = "${Environment.DIRECTORY_PICTURES}/$FOLDER_NAME"
+    /** Returns the configured folder name (e.g. "FotoBlocchi"). */
+    fun folderName(context: Context): String = SettingsManager.getFolderName(context)
+
+    /** Full relative path under MediaStore (e.g. "Pictures/FotoBlocchi"). */
+    fun relativePath(context: Context): String =
+        "${Environment.DIRECTORY_PICTURES}/${folderName(context)}"
 
     /**
      * Returns the next progressive index for a given commessa, scanning existing
-     * files in Pictures/FotoCommesse whose name matches `{commessa}_{N}.jpg`.
+     * files in the configured folder whose name matches `{commessa}_{N}.jpg`.
      * If none exist, returns 1.
      */
     fun nextIndex(context: Context, commessa: String): Int {
+        val folder = folderName(context)
         val projection = arrayOf(MediaStore.Images.Media.DISPLAY_NAME)
         val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? " +
                 "AND ${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?"
-        val selectionArgs = arrayOf("%$FOLDER_NAME%", "${commessa}_%")
+        val selectionArgs = arrayOf("%$folder%", "${commessa}_%")
 
         var maxIdx = 0
         val pattern = Regex("^${Regex.escape(commessa)}_(\\d+)\\.[^.]+$")
@@ -40,12 +45,13 @@ object PhotoStorage {
     }
 
     /**
-     * Lists all commesse found in the FotoCommesse folder with their photo count.
+     * Lists all commesse found in the configured folder with their photo count.
      */
     fun listCommesseWithCount(context: Context): Map<String, Int> {
+        val folder = folderName(context)
         val projection = arrayOf(MediaStore.Images.Media.DISPLAY_NAME)
         val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
-        val selectionArgs = arrayOf("%$FOLDER_NAME%")
+        val selectionArgs = arrayOf("%$folder%")
 
         val counts = mutableMapOf<String, Int>()
         val pattern = Regex("^(.+)_(\\d+)\\.[^.]+$")
@@ -69,21 +75,21 @@ object PhotoStorage {
     /**
      * Builds ContentValues for a new photo of the given commessa with the given index.
      */
-    fun buildContentValues(commessa: String, index: Int): ContentValues {
+    fun buildContentValues(context: Context, commessa: String, index: Int): ContentValues {
         val fileName = "${commessa}_${index}.jpg"
         return ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            put(MediaStore.Images.Media.RELATIVE_PATH, RELATIVE_PATH)
+            put(MediaStore.Images.Media.RELATIVE_PATH, relativePath(context))
         }
     }
 
     /**
-     * Sanitizes a commessa string: keeps alphanumerics, dash, underscore.
+     * Sanitizes a commessa/folder string: keeps alphanumerics, dash, underscore.
      * Replaces everything else with underscore and trims surrounding underscores.
      */
     fun sanitize(input: String): String {
         val cleaned = input.trim().replace(Regex("[^A-Za-z0-9_\\-]"), "_")
-        return cleaned.trim('_').ifEmpty { "commessa" }
+        return cleaned.trim('_')
     }
 }
