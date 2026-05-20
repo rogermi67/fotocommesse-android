@@ -34,4 +34,120 @@ class MainActivity : AppCompatActivity() {
                     this,
                     "Il permesso fotocamera è obbligatorio",
                     Toast.LENGTH_LONG
-                ).sho
+                ).show()
+            }
+            refreshList()
+        }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        setSupportActionBar(binding.toolbar)
+
+        binding.btnStart.isEnabled = false
+        binding.etCommessa.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                binding.btnStart.isEnabled = !s.isNullOrBlank()
+            }
+        })
+
+        binding.btnStart.setOnClickListener { onStartClicked() }
+
+        binding.rvRecenti.layoutManager = LinearLayoutManager(this)
+
+        ensurePermissions()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (hasCameraPermission() && hasStoragePermission()) {
+            refreshList()
+        }
+    }
+
+    private fun onStartClicked() {
+        val raw = binding.etCommessa.text.toString().trim()
+        if (raw.isBlank()) return
+        val sanitized = PhotoStorage.sanitize(raw)
+
+        if (sanitized != raw) {
+            AlertDialog.Builder(this)
+                .setTitle("Commessa con caratteri non validi")
+                .setMessage("Verrà salvata come \"$sanitized\".\nProcedere?")
+                .setPositiveButton("Conferma") { _, _ -> launchCamera(sanitized) }
+                .setNegativeButton("Annulla", null)
+                .show()
+        } else {
+            launchCamera(sanitized)
+        }
+    }
+
+    private fun launchCamera(commessa: String) {
+        val intent = Intent(this, CameraActivity::class.java).apply {
+            putExtra(CameraActivity.EXTRA_COMMESSA, commessa)
+        }
+        startActivity(intent)
+    }
+
+    private fun refreshList() {
+        lifecycleScope.launch {
+            val counts = withContext(Dispatchers.IO) {
+                PhotoStorage.listCommesseWithCount(this@MainActivity)
+            }
+            val items = counts.entries.sortedByDescending { it.key }
+            binding.rvRecenti.adapter = CommesseAdapter(items) { commessa ->
+                binding.etCommessa.setText(commessa)
+                binding.etCommessa.setSelection(commessa.length)
+            }
+            binding.tvNoData.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+            binding.tvTotalCount.text =
+                "${items.size} commesse, ${counts.values.sum()} foto totali"
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun ensurePermissions() {
+        val needed = mutableListOf<String>()
+        if (!hasCameraPermission()) needed += Manifest.permission.CAMERA
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            needed += Manifest.permission.READ_MEDIA_IMAGES
+        }
+        if (needed.isNotEmpty()) {
+            requestPermissions.launch(needed.toTypedArray())
+        }
+    }
+
+    private fun hasCameraPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun hasStoragePermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) ==
+                PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+}
