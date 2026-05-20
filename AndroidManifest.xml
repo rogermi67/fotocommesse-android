@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Foto Blocchi</string>
+    <string name="subtitle">Inserisci il numero di commessa e scatta</string>
+    <string name="hint_commessa">Numero commessa (es. 12345)</string>
+    <string name="btn_start">INIZIA SCATTI</string>
+    <string name="btn_fine">FINE</string>
+    <string name="section_recenti">Commesse recenti</string>
+    <string name="no_data">Nessuna foto ancora.\nInserisci un numero di commessa e inizia.</string>
+
+    <!-- Settings -->
+    <string name="menu_settings">Impostazioni</string>
+    <string name="settings_title">Impostazioni</string>
+    <string name="settings_section_folder">Cartella di destinazione</string>
+    <string name="settings_folder_hint">Nome cartella</string>
+    <string name="settings_folder_description">Sottocartella di Pictures/ dove vengono salvate le foto. Modificandola, le commesse della cartella precedente non appariranno più nella lista (ma i file restano sul telefono).</string>
+    <string name="settings_folder_helper">Caratteri consentiti: lettere, numeri, _ e -. Gli altri saranno sostituiti.</string>
+    <string name="settings_preview_label">Anteprima percorso:</string>
+    <string name="settings_section_sync">Sincronizzazione cloud</string>
+    <string name="settings_sync_description">Per sincronizzare automaticamente la cartella con Box / Dropbox / Google Drive, installa FolderSync Lite dal Play Store e configura un \"folderpair\" con la cartella di destinazione (vedi README del progetto).</string>
+    <string name="settings_section_info">Informazioni</string>
+    <string name="settings_info_version">Versione %1$s</string>
+    <string name="settings_info_company">AP Consulting</string>
+    <string name="btn_save">SALVA</string>
+    <string name="toast_saved">Salvato: %1$s</string>
+    <string name="toast_invalid_folder">Nome cartella non valido</string>
+</resources>
