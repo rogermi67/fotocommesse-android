@@ -1,16 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Foto Blocchi</string>
-    <string name="subtitle">Inserisci il numero di commessa e scatta</string>
+    <string name="app_name">Foto Blocchi &amp; Lastre</string>
+
+    <!-- Landing -->
+    <string name="landing_title">Foto Blocchi &amp; Lastre</string>
+    <string name="landing_subtitle">Seleziona la sezione</string>
+
+    <!-- Sezioni -->
+    <string name="section_blocchi_title">Foto Blocchi</string>
+    <string name="section_blocchi_description">Fotografa blocchi di marmo per commessa</string>
+    <string name="section_lastre_title">Foto Lastre</string>
+    <string name="section_lastre_description">Fotografa lastre per codice e progressivo</string>
+
+    <!-- Sottotitoli pagina principale -->
+    <string name="subtitle_blocchi">Inserisci il numero di commessa e scatta</string>
+    <string name="subtitle_lastre">Inserisci codice-progressivo (es. 12345-3) e scatta</string>
+
+    <!-- Hint -->
     <string name="hint_commessa">Numero commessa (es. 12345)</string>
+    <string name="hint_lastra">Codice lastra (es. 12345-3)</string>
+
+    <!-- Sezioni recenti -->
+    <string name="section_recenti_blocchi">Commesse recenti</string>
+    <string name="section_recenti_lastre">Lastre recenti</string>
+
+    <!-- Comuni -->
     <string name="btn_start">INIZIA SCATTI</string>
     <string name="btn_fine">FINE</string>
-    <string name="section_recenti">Commesse recenti</string>
-    <string name="no_data">Nessuna foto ancora.\nInserisci un numero di commessa e inizia.</string>
+    <string name="no_data">Nessuna foto ancora.\nInserisci un valore e inizia.</string>
 
     <!-- Barcode -->
     <string name="cd_scan_barcode">Scansiona barcode</string>
-    <string name="barcode_prompt">Inquadra il barcode del blocco</string>
+    <string name="barcode_prompt">Inquadra il barcode</string>
 
     <!-- Menu -->
     <string name="menu_settings">Impostazioni</string>
@@ -29,24 +50,19 @@
     <string name="gallery_delete_done">%1$d foto eliminate</string>
     <string name="gallery_help">Tocca a lungo per selezionare. Tap per aprire a tutto schermo.</string>
 
-    <!-- Photo viewer -->
-    <string name="viewer_title">%1$s</string>
-    <string name="viewer_delete_message">Eliminare definitivamente questa foto?</string>
-
     <!-- Settings -->
     <string name="settings_title">Impostazioni</string>
-    <string name="settings_section_folder">Cartella di destinazione</string>
-    <string name="settings_folder_hint">Nome cartella</string>
-    <string name="settings_folder_description">Sottocartella di Pictures/ dove vengono salvate le foto. Modificandola, le commesse della cartella precedente non appariranno più nella lista (ma i file restano sul telefono).</string>
+    <string name="settings_section_folder">Cartelle di destinazione</string>
+    <string name="settings_folder_blocchi_hint">Cartella Foto Blocchi</string>
+    <string name="settings_folder_lastre_hint">Cartella Foto Lastre</string>
+    <string name="settings_folder_description">Sottocartelle di Pictures/ dove vengono salvate le foto. Devono essere diverse tra loro.</string>
     <string name="settings_folder_helper">Caratteri consentiti: lettere, numeri, _ e -. Gli altri saranno sostituiti.</string>
-    <string name="settings_preview_label">Anteprima percorso:</string>
     <string name="settings_section_sync">Sincronizzazione cloud</string>
-    <string name="settings_sync_description">Per sincronizzare automaticamente la cartella con OneDrive / Box / Dropbox / Google Drive, installa FolderSync Lite dal Play Store e configura una coppia di cartelle con la cartella di destinazione.</string>
+    <string name="settings_sync_description">Per sincronizzare automaticamente le cartelle con OneDrive, configura FolderSync con due coppie di cartelle distinte (una per blocchi, una per lastre).</string>
     <string name="settings_section_info">Informazioni</string>
     <string name="settings_info_version">Versione %1$s</string>
     <string name="powered_by">Powered by AP Consulting</string>
 
     <string name="btn_save">SALVA</string>
-    <string name="toast_saved">Salvato: %1$s</string>
     <string name="toast_invalid_folder">Nome cartella non valido</string>
 </resources>

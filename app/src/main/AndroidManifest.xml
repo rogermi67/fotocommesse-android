@@ -26,13 +26,18 @@
         tools:targetApi="33">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".LandingActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:parentActivityName=".LandingActivity" />
 
         <activity
             android:name=".CameraActivity"
@@ -43,12 +48,11 @@
         <activity
             android:name=".SettingsActivity"
             android:exported="false"
-            android:parentActivityName=".MainActivity" />
+            android:parentActivityName=".LandingActivity" />
 
         <activity
             android:name=".GalleryActivity"
-            android:exported="false"
-            android:parentActivityName=".MainActivity" />
+            android:exported="false" />
 
     </application>
 

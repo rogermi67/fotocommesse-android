@@ -27,6 +27,7 @@ import kotlinx.coroutines.withContext
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    private lateinit var mode: Mode
 
     private val requestPermissions =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
@@ -54,6 +55,9 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        mode = Mode.fromIntent(intent)
+        applyModeUi()
+
         setSupportActionBar(binding.toolbar)
 
         binding.btnStart.isEnabled = false
@@ -66,13 +70,39 @@ class MainActivity : AppCompatActivity() {
         })
 
         binding.btnStart.setOnClickListener { onStartClicked() }
-
-        // Barcode scanner via endIcon del TextInputLayout
         binding.tilCommessa.setEndIconOnClickListener { launchBarcodeScanner() }
 
         binding.rvRecenti.layoutManager = LinearLayoutManager(this)
 
         ensurePermissions()
+    }
+
+    private fun applyModeUi() {
+        val titleRes = when (mode) {
+            Mode.BLOCCHI -> R.string.section_blocchi_title
+            Mode.LASTRE -> R.string.section_lastre_title
+        }
+        title = getString(titleRes)
+        binding.toolbar.title = getString(titleRes)
+
+        binding.tvSubtitle.setText(
+            when (mode) {
+                Mode.BLOCCHI -> R.string.subtitle_blocchi
+                Mode.LASTRE -> R.string.subtitle_lastre
+            }
+        )
+
+        binding.tilCommessa.hint = when (mode) {
+            Mode.BLOCCHI -> getString(R.string.hint_commessa)
+            Mode.LASTRE -> getString(R.string.hint_lastra)
+        }
+
+        binding.tvSectionRecenti.setText(
+            when (mode) {
+                Mode.BLOCCHI -> R.string.section_recenti_blocchi
+                Mode.LASTRE -> R.string.section_recenti_lastre
+            }
+        )
     }
 
     override fun onResume() {
@@ -101,10 +131,29 @@ class MainActivity : AppCompatActivity() {
         if (raw.isBlank()) return
         val sanitized = PhotoStorage.sanitize(raw)
 
+        if (sanitized.isBlank()) {
+            Toast.makeText(this, "Valore non valido", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (!PhotoStorage.isValid(sanitized, mode)) {
+            val msg = if (mode == Mode.LASTRE) {
+                "Formato lastra non valido.\nUsa codice-progressivo (es. 12345-3)"
+            } else {
+                "Valore non valido"
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Input non valido")
+                .setMessage(msg)
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
         if (sanitized != raw) {
             AlertDialog.Builder(this)
-                .setTitle("Commessa con caratteri non validi")
-                .setMessage("Verrà salvata come \"$sanitized\".\nProcedere?")
+                .setTitle("Caratteri non consentiti")
+                .setMessage("Verrà salvato come \"$sanitized\".\nProcedere?")
                 .setPositiveButton("Conferma") { _, _ -> launchCamera(sanitized) }
                 .setNegativeButton("Annulla", null)
                 .show()
@@ -113,9 +162,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun launchCamera(commessa: String) {
+    private fun launchCamera(key: String) {
         val intent = Intent(this, CameraActivity::class.java).apply {
-            putExtra(CameraActivity.EXTRA_COMMESSA, commessa)
+            putExtra(CameraActivity.EXTRA_KEY, key)
+            putExtra(Mode.EXTRA_MODE, mode.name)
         }
         startActivity(intent)
     }
@@ -123,25 +173,30 @@ class MainActivity : AppCompatActivity() {
     private fun refreshList() {
         lifecycleScope.launch {
             val counts = withContext(Dispatchers.IO) {
-                PhotoStorage.listCommesseWithCount(this@MainActivity)
+                PhotoStorage.listKeysWithCount(this@MainActivity, mode)
             }
             val items = counts.entries.sortedByDescending { it.key }
             binding.rvRecenti.adapter = CommesseAdapter(
                 items,
-                onClick = { commessa ->
-                    binding.etCommessa.setText(commessa)
-                    binding.etCommessa.setSelection(commessa.length)
+                onClick = { key ->
+                    binding.etCommessa.setText(key)
+                    binding.etCommessa.setSelection(key.length)
                 },
-                onLongClick = { commessa ->
+                onLongClick = { key ->
                     val intent = Intent(this@MainActivity, GalleryActivity::class.java).apply {
-                        putExtra(GalleryActivity.EXTRA_COMMESSA, commessa)
+                        putExtra(GalleryActivity.EXTRA_KEY, key)
+                        putExtra(Mode.EXTRA_MODE, mode.name)
                     }
                     startActivity(intent)
                 }
             )
             binding.tvNoData.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
-            binding.tvTotalCount.text =
-                "${items.size} commesse, ${counts.values.sum()} foto totali"
+            val tot = counts.values.sum()
+            binding.tvTotalCount.text = if (mode == Mode.LASTRE) {
+                "${items.size} lastre, $tot foto totali"
+            } else {
+                "${items.size} commesse, $tot foto totali"
+            }
         }
     }
 
@@ -153,7 +208,10 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_gallery -> {
-                startActivity(Intent(this, GalleryActivity::class.java))
+                val intent = Intent(this, GalleryActivity::class.java).apply {
+                    putExtra(Mode.EXTRA_MODE, mode.name)
+                }
+                startActivity(intent)
                 true
             }
             R.id.action_settings -> {

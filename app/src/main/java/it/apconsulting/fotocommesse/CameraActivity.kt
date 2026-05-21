@@ -1,6 +1,5 @@
 package it.apconsulting.fotocommesse
 
-import android.content.Context
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Bundle
@@ -24,7 +23,8 @@ class CameraActivity : AppCompatActivity() {
     private var imageCapture: ImageCapture? = null
     private lateinit var cameraExecutor: ExecutorService
 
-    private lateinit var commessa: String
+    private lateinit var key: String
+    private lateinit var mode: Mode
     private var photoCount: Int = 0
     private var toneGen: ToneGenerator? = null
 
@@ -33,14 +33,14 @@ class CameraActivity : AppCompatActivity() {
         binding = ActivityCameraBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        commessa = intent.getStringExtra(EXTRA_COMMESSA).orEmpty()
-        if (commessa.isBlank()) {
+        mode = Mode.fromIntent(intent)
+        key = intent.getStringExtra(EXTRA_KEY).orEmpty()
+        if (key.isBlank()) {
             finish()
             return
         }
 
-        // photoCount = highest existing index for this commessa
-        photoCount = PhotoStorage.nextIndex(this, commessa) - 1
+        photoCount = PhotoStorage.photoCount(this, key, mode)
         updateUi()
 
         cameraExecutor = Executors.newSingleThreadExecutor()
@@ -57,9 +57,14 @@ class CameraActivity : AppCompatActivity() {
     }
 
     private fun updateUi() {
-        binding.tvCommessa.text = "Commessa: $commessa"
-        binding.tvCount.text =
-            "Scattate: $photoCount\nProssima foto: #${photoCount + 1}"
+        val label = when (mode) {
+            Mode.BLOCCHI -> "Commessa: $key"
+            Mode.LASTRE -> "Lastra: $key"
+        }
+        binding.tvCommessa.text = label
+
+        val nextFileName = PhotoStorage.nextFileName(this, key, mode)
+        binding.tvCount.text = "Scattate: $photoCount\nProssimo file: $nextFileName"
     }
 
     private fun startCamera() {
@@ -87,8 +92,8 @@ class CameraActivity : AppCompatActivity() {
         val capture = imageCapture ?: return
         binding.btnShoot.isEnabled = false
 
-        val nextIdx = photoCount + 1
-        val contentValues = PhotoStorage.buildContentValues(this, commessa, nextIdx)
+        val fileName = PhotoStorage.nextFileName(this, key, mode)
+        val contentValues = PhotoStorage.buildContentValues(this, fileName, mode)
 
         val outputOptions = ImageCapture.OutputFileOptions.Builder(
             contentResolver,
@@ -111,12 +116,12 @@ class CameraActivity : AppCompatActivity() {
                 }
 
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    photoCount = nextIdx
+                    photoCount = PhotoStorage.photoCount(this@CameraActivity, key, mode)
                     updateUi()
                     toneGen?.startTone(ToneGenerator.TONE_PROP_BEEP, 80)
                     Toast.makeText(
                         this@CameraActivity,
-                        "Salvata ${commessa}_${nextIdx}.jpg",
+                        "Salvata $fileName",
                         Toast.LENGTH_SHORT
                     ).show()
                     binding.btnShoot.isEnabled = true
@@ -134,6 +139,6 @@ class CameraActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "CameraActivity"
-        const val EXTRA_COMMESSA = "commessa"
+        const val EXTRA_KEY = "key"
     }
 }

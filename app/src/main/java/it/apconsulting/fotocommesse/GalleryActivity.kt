@@ -23,24 +23,21 @@ class GalleryActivity : AppCompatActivity() {
     private var photos: List<PhotoItem> = emptyList()
     private val selectedUris = mutableSetOf<Uri>()
     private var inSelectionMode: Boolean = false
-    private var commessaFilter: String? = null
+    private var keyFilter: String? = null
+    private lateinit var mode: Mode
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityGalleryBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        commessaFilter = intent.getStringExtra(EXTRA_COMMESSA)?.takeIf { it.isNotBlank() }
+        mode = Mode.fromIntent(intent)
+        keyFilter = intent.getStringExtra(EXTRA_KEY)?.takeIf { it.isNotBlank() }
 
         setSupportActionBar(binding.toolbar)
         supportActionBar?.apply {
             setDisplayHomeAsUpEnabled(true)
             setDisplayShowHomeEnabled(true)
-            title = if (commessaFilter != null) {
-                "Commessa $commessaFilter"
-            } else {
-                getString(R.string.gallery_title)
-            }
         }
 
         adapter = GalleryAdapter(
@@ -61,7 +58,7 @@ class GalleryActivity : AppCompatActivity() {
     private fun loadPhotos() {
         lifecycleScope.launch {
             val items = withContext(Dispatchers.IO) {
-                PhotoStorage.listAllPhotos(this@GalleryActivity, commessaFilter)
+                PhotoStorage.listAllPhotos(this@GalleryActivity, mode, keyFilter)
             }
             photos = items
             adapter.submitList(items)
@@ -83,11 +80,18 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     private fun updateTitle() {
-        supportActionBar?.title = when {
+        val baseTitle = when {
             inSelectionMode -> getString(R.string.gallery_selected, selectedUris.size)
-            commessaFilter != null -> "Commessa $commessaFilter"
-            else -> getString(R.string.gallery_title)
+            keyFilter != null -> {
+                val prefix = if (mode == Mode.LASTRE) "Lastra" else "Commessa"
+                "$prefix $keyFilter"
+            }
+            else -> {
+                val suffix = if (mode == Mode.LASTRE) " — Lastre" else " — Blocchi"
+                getString(R.string.gallery_title) + suffix
+            }
         }
+        supportActionBar?.title = baseTitle
         supportActionBar?.subtitle = if (!inSelectionMode) {
             getString(R.string.gallery_total, photos.size)
         } else null
@@ -206,6 +210,6 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     companion object {
-        const val EXTRA_COMMESSA = "commessa_filter"
+        const val EXTRA_KEY = "key_filter"
     }
 }

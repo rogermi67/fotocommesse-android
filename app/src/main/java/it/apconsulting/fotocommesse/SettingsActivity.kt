@@ -23,24 +23,24 @@ class SettingsActivity : AppCompatActivity() {
             title = getString(R.string.settings_title)
         }
 
-        val current = SettingsManager.getFolderName(this)
-        binding.etFolderName.setText(current)
-        binding.etFolderName.setSelection(current.length)
-        updatePreview(current)
+        val currentBlocchi = SettingsManager.getBlocchiFolderName(this)
+        val currentLastre = SettingsManager.getLastreFolderName(this)
+        binding.etFolderBlocchi.setText(currentBlocchi)
+        binding.etFolderLastre.setText(currentLastre)
+        updatePreview()
 
-        binding.etFolderName.addTextChangedListener(object : TextWatcher {
+        val watcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
-                val raw = s?.toString().orEmpty()
-                val sanitized = PhotoStorage.sanitize(raw)
-                updatePreview(if (sanitized.isBlank()) "—" else sanitized)
+                updatePreview()
             }
-        })
+        }
+        binding.etFolderBlocchi.addTextChangedListener(watcher)
+        binding.etFolderLastre.addTextChangedListener(watcher)
 
         binding.btnSave.setOnClickListener { onSave() }
 
-        // Mostro la versione
         val versionName = try {
             packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
         } catch (e: Exception) {
@@ -49,23 +49,29 @@ class SettingsActivity : AppCompatActivity() {
         binding.tvVersion.text = getString(R.string.settings_info_version, versionName)
     }
 
-    private fun updatePreview(folderName: String) {
-        binding.tvPreview.text = "Pictures/$folderName/"
+    private fun updatePreview() {
+        val b = PhotoStorage.sanitize(binding.etFolderBlocchi.text?.toString().orEmpty())
+        val l = PhotoStorage.sanitize(binding.etFolderLastre.text?.toString().orEmpty())
+        binding.tvPreviewBlocchi.text = "Pictures/${if (b.isBlank()) "—" else b}/"
+        binding.tvPreviewLastre.text = "Pictures/${if (l.isBlank()) "—" else l}/"
     }
 
     private fun onSave() {
-        val raw = binding.etFolderName.text?.toString().orEmpty()
-        val sanitized = PhotoStorage.sanitize(raw)
-        if (sanitized.isBlank()) {
+        val rawB = binding.etFolderBlocchi.text?.toString().orEmpty()
+        val rawL = binding.etFolderLastre.text?.toString().orEmpty()
+        val sB = PhotoStorage.sanitize(rawB)
+        val sL = PhotoStorage.sanitize(rawL)
+        if (sB.isBlank() || sL.isBlank()) {
             Toast.makeText(this, R.string.toast_invalid_folder, Toast.LENGTH_SHORT).show()
             return
         }
-        SettingsManager.setFolderName(this, sanitized)
-        Toast.makeText(
-            this,
-            getString(R.string.toast_saved, "Pictures/$sanitized/"),
-            Toast.LENGTH_SHORT
-        ).show()
+        if (sB == sL) {
+            Toast.makeText(this, "Le due cartelle devono essere diverse", Toast.LENGTH_LONG).show()
+            return
+        }
+        SettingsManager.setBlocchiFolderName(this, sB)
+        SettingsManager.setLastreFolderName(this, sL)
+        Toast.makeText(this, "Impostazioni salvate", Toast.LENGTH_SHORT).show()
         finish()
     }
 

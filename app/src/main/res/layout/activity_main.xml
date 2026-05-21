@@ -25,7 +25,7 @@
             android:id="@+id/tvSubtitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/subtitle"
+            android:text="@string/subtitle_blocchi"
             android:textSize="14sp"
             android:textColor="?android:attr/textColorSecondary"
             app:layout_constraintStart_toStartOf="parent"
@@ -71,7 +71,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:text="@string/section_recenti"
+            android:text="@string/section_recenti_blocchi"
             android:textSize="14sp"
             android:textStyle="bold"
             app:layout_constraintStart_toStartOf="parent"
@@ -110,7 +110,7 @@
             app:layout_constraintTop_toBottomOf="@id/tvSectionRecenti"
             app:layout_constraintBottom_toTopOf="@id/footerBar" />
 
-               <LinearLayout
+        <LinearLayout
             android:id="@+id/footerBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

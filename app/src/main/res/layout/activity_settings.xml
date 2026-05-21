@@ -42,15 +42,15 @@
                 android:textSize="13sp" />
 
             <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/tilFolderName"
+                android:id="@+id/tilFolderBlocchi"
                 style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:hint="@string/settings_folder_hint">
+                android:hint="@string/settings_folder_blocchi_hint">
 
                 <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etFolderName"
+                    android:id="@+id/etFolderBlocchi"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:inputType="text|textNoSuggestions"
@@ -58,35 +58,46 @@
             </com.google.android.material.textfield.TextInputLayout>
 
             <TextView
+                android:id="@+id/tvPreviewBlocchi"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/settings_folder_helper"
-                android:textColor="?android:attr/textColorSecondary"
-                android:textSize="12sp" />
+                android:layout_marginTop="2dp"
+                android:fontFamily="monospace"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="13sp" />
 
-            <LinearLayout
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilFolderLastre"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:orientation="horizontal">
+                android:hint="@string/settings_folder_lastre_hint">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etFolderLastre"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/settings_preview_label"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
+                    android:inputType="text|textNoSuggestions"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
 
-                <TextView
-                    android:id="@+id/tvPreview"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="6dp"
-                    android:fontFamily="monospace"
-                    android:textColor="?attr/colorPrimary"
-                    android:textSize="14sp" />
-            </LinearLayout>
+            <TextView
+                android:id="@+id/tvPreviewLastre"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:fontFamily="monospace"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/settings_folder_helper"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="12sp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnSave"
