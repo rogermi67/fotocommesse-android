@@ -23,17 +23,24 @@ class GalleryActivity : AppCompatActivity() {
     private var photos: List<PhotoItem> = emptyList()
     private val selectedUris = mutableSetOf<Uri>()
     private var inSelectionMode: Boolean = false
+    private var commessaFilter: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityGalleryBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        commessaFilter = intent.getStringExtra(EXTRA_COMMESSA)?.takeIf { it.isNotBlank() }
+
         setSupportActionBar(binding.toolbar)
         supportActionBar?.apply {
             setDisplayHomeAsUpEnabled(true)
             setDisplayShowHomeEnabled(true)
-            title = getString(R.string.gallery_title)
+            title = if (commessaFilter != null) {
+                "Commessa $commessaFilter"
+            } else {
+                getString(R.string.gallery_title)
+            }
         }
 
         adapter = GalleryAdapter(
@@ -54,7 +61,7 @@ class GalleryActivity : AppCompatActivity() {
     private fun loadPhotos() {
         lifecycleScope.launch {
             val items = withContext(Dispatchers.IO) {
-                PhotoStorage.listAllPhotos(this@GalleryActivity)
+                PhotoStorage.listAllPhotos(this@GalleryActivity, commessaFilter)
             }
             photos = items
             adapter.submitList(items)
@@ -76,10 +83,10 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     private fun updateTitle() {
-        supportActionBar?.title = if (inSelectionMode) {
-            getString(R.string.gallery_selected, selectedUris.size)
-        } else {
-            getString(R.string.gallery_title)
+        supportActionBar?.title = when {
+            inSelectionMode -> getString(R.string.gallery_selected, selectedUris.size)
+            commessaFilter != null -> "Commessa $commessaFilter"
+            else -> getString(R.string.gallery_title)
         }
         supportActionBar?.subtitle = if (!inSelectionMode) {
             getString(R.string.gallery_total, photos.size)
@@ -90,7 +97,6 @@ class GalleryActivity : AppCompatActivity() {
         if (inSelectionMode) {
             toggleSelection(item)
         } else {
-            // Open in external viewer
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(item.uri, "image/*")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -197,5 +203,9 @@ class GalleryActivity : AppCompatActivity() {
             exitSelection()
             loadPhotos()
         }
+    }
+
+    companion object {
+        const val EXTRA_COMMESSA = "commessa_filter"
     }
 }

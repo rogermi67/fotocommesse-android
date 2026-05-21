@@ -9,18 +9,11 @@ import android.provider.MediaStore
 
 object PhotoStorage {
 
-    /** Returns the configured folder name (e.g. "FotoBlocchi"). */
     fun folderName(context: Context): String = SettingsManager.getFolderName(context)
 
-    /** Full relative path under MediaStore (e.g. "Pictures/FotoBlocchi"). */
     fun relativePath(context: Context): String =
         "${Environment.DIRECTORY_PICTURES}/${folderName(context)}"
 
-    /**
-     * Returns the next progressive index for a given commessa, scanning existing
-     * files in the configured folder whose name matches `{commessa}_{N}.jpg`.
-     * If none exist, returns 1.
-     */
     fun nextIndex(context: Context, commessa: String): Int {
         val folder = folderName(context)
         val projection = arrayOf(MediaStore.Images.Media.DISPLAY_NAME)
@@ -46,9 +39,6 @@ object PhotoStorage {
         return maxIdx + 1
     }
 
-    /**
-     * Lists all commesse found in the configured folder with their photo count.
-     */
     fun listCommesseWithCount(context: Context): Map<String, Int> {
         val folder = folderName(context)
         val projection = arrayOf(MediaStore.Images.Media.DISPLAY_NAME)
@@ -75,9 +65,11 @@ object PhotoStorage {
     }
 
     /**
-     * Lists all photos in the configured folder, ordered by date added desc.
+     * Lists photos in the configured folder, optionally filtered by commessa prefix.
+     * If commessaFilter is non-null and non-blank, only photos whose name matches
+     * `{commessaFilter}_{N}.{ext}` are returned.
      */
-    fun listAllPhotos(context: Context): List<PhotoItem> {
+    fun listAllPhotos(context: Context, commessaFilter: String? = null): List<PhotoItem> {
         val folder = folderName(context)
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
@@ -85,10 +77,22 @@ object PhotoStorage {
             MediaStore.Images.Media.DATE_ADDED,
             MediaStore.Images.Media.SIZE
         )
-        val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
-        val selectionArgs = arrayOf("%$folder%")
+
+        val selection: String
+        val selectionArgs: Array<String>
+        if (!commessaFilter.isNullOrBlank()) {
+            selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? " +
+                    "AND ${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?"
+            selectionArgs = arrayOf("%$folder%", "${commessaFilter}_%")
+        } else {
+            selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
+            selectionArgs = arrayOf("%$folder%")
+        }
 
         val items = mutableListOf<PhotoItem>()
+        val filterPattern = commessaFilter?.let {
+            Regex("^${Regex.escape(it)}_(\\d+)\\.[^.]+$")
+        }
 
         context.contentResolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -103,6 +107,8 @@ object PhotoStorage {
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idCol)
                 val name = cursor.getString(nameCol) ?: continue
+                // If filtering by commessa, ensure exact match of the prefix (not just LIKE)
+                if (filterPattern != null && filterPattern.find(name) == null) continue
                 val date = cursor.getLong(dateCol)
                 val size = cursor.getLong(sizeCol)
                 val uri = ContentUris.withAppendedId(
@@ -114,10 +120,6 @@ object PhotoStorage {
         return items
     }
 
-    /**
-     * Deletes a list of photos via MediaStore.
-     * Returns the count successfully deleted.
-     */
     fun deletePhotos(context: Context, uris: List<Uri>): Int {
         var deleted = 0
         uris.forEach { uri ->
@@ -125,18 +127,12 @@ object PhotoStorage {
                 val rows = context.contentResolver.delete(uri, null, null)
                 if (rows > 0) deleted++
             } catch (_: SecurityException) {
-                // On Android 11+ some photos may require user confirmation.
-                // For app-created files this typically does not occur.
             } catch (_: Exception) {
-                // Ignore individual failures
             }
         }
         return deleted
     }
 
-    /**
-     * Builds ContentValues for a new photo of the given commessa with the given index.
-     */
     fun buildContentValues(context: Context, commessa: String, index: Int): ContentValues {
         val fileName = "${commessa}_${index}.jpg"
         return ContentValues().apply {
@@ -146,9 +142,6 @@ object PhotoStorage {
         }
     }
 
-    /**
-     * Sanitizes a commessa/folder string: keeps alphanumerics, dash, underscore.
-     */
     fun sanitize(input: String): String {
         val cleaned = input.trim().replace(Regex("[^A-Za-z0-9_\\-]"), "_")
         return cleaned.trim('_')

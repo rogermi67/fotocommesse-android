@@ -126,10 +126,19 @@ class MainActivity : AppCompatActivity() {
                 PhotoStorage.listCommesseWithCount(this@MainActivity)
             }
             val items = counts.entries.sortedByDescending { it.key }
-            binding.rvRecenti.adapter = CommesseAdapter(items) { commessa ->
-                binding.etCommessa.setText(commessa)
-                binding.etCommessa.setSelection(commessa.length)
-            }
+            binding.rvRecenti.adapter = CommesseAdapter(
+                items,
+                onClick = { commessa ->
+                    binding.etCommessa.setText(commessa)
+                    binding.etCommessa.setSelection(commessa.length)
+                },
+                onLongClick = { commessa ->
+                    val intent = Intent(this@MainActivity, GalleryActivity::class.java).apply {
+                        putExtra(GalleryActivity.EXTRA_COMMESSA, commessa)
+                    }
+                    startActivity(intent)
+                }
+            )
             binding.tvNoData.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
             binding.tvTotalCount.text =
                 "${items.size} commesse, ${counts.values.sum()} foto totali"

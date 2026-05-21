@@ -115,27 +115,28 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:gravity="center_vertical"
+            android:gravity="center_vertical|end"
             android:orientation="horizontal"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintBottom_toBottomOf="parent">
 
-            <ImageView
-                android:id="@+id/ivApLogo"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:src="@drawable/ap_logo"
-                android:contentDescription="@null" />
-
             <TextView
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
                 android:text="@string/powered_by"
                 android:textColor="?android:attr/textColorSecondary"
-                android:textSize="11sp" />
+                android:textSize="10sp" />
+
+            <ImageView
+                android:id="@+id/ivApLogo"
+                android:layout_width="100dp"
+                android:layout_height="26dp"
+                android:layout_marginStart="8dp"
+                android:adjustViewBounds="true"
+                android:scaleType="fitCenter"
+                android:src="@drawable/apconsulting_logo"
+                android:contentDescription="@null" />
         </LinearLayout>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
