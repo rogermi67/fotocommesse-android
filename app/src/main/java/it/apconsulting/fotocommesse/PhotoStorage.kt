@@ -1,7 +1,9 @@
 package it.apconsulting.fotocommesse
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 
@@ -73,6 +75,66 @@ object PhotoStorage {
     }
 
     /**
+     * Lists all photos in the configured folder, ordered by date added desc.
+     */
+    fun listAllPhotos(context: Context): List<PhotoItem> {
+        val folder = folderName(context)
+        val projection = arrayOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.DISPLAY_NAME,
+            MediaStore.Images.Media.DATE_ADDED,
+            MediaStore.Images.Media.SIZE
+        )
+        val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
+        val selectionArgs = arrayOf("%$folder%")
+
+        val items = mutableListOf<PhotoItem>()
+
+        context.contentResolver.query(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            projection, selection, selectionArgs,
+            "${MediaStore.Images.Media.DATE_ADDED} DESC"
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+            val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+            val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idCol)
+                val name = cursor.getString(nameCol) ?: continue
+                val date = cursor.getLong(dateCol)
+                val size = cursor.getLong(sizeCol)
+                val uri = ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id
+                )
+                items.add(PhotoItem(uri, name, date, size))
+            }
+        }
+        return items
+    }
+
+    /**
+     * Deletes a list of photos via MediaStore.
+     * Returns the count successfully deleted.
+     */
+    fun deletePhotos(context: Context, uris: List<Uri>): Int {
+        var deleted = 0
+        uris.forEach { uri ->
+            try {
+                val rows = context.contentResolver.delete(uri, null, null)
+                if (rows > 0) deleted++
+            } catch (_: SecurityException) {
+                // On Android 11+ some photos may require user confirmation.
+                // For app-created files this typically does not occur.
+            } catch (_: Exception) {
+                // Ignore individual failures
+            }
+        }
+        return deleted
+    }
+
+    /**
      * Builds ContentValues for a new photo of the given commessa with the given index.
      */
     fun buildContentValues(context: Context, commessa: String, index: Int): ContentValues {
@@ -86,7 +148,6 @@ object PhotoStorage {
 
     /**
      * Sanitizes a commessa/folder string: keeps alphanumerics, dash, underscore.
-     * Replaces everything else with underscore and trims surrounding underscores.
      */
     fun sanitize(input: String): String {
         val cleaned = input.trim().replace(Regex("[^A-Za-z0-9_\\-]"), "_")

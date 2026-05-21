@@ -40,6 +40,7 @@ class SettingsActivity : AppCompatActivity() {
 
         binding.btnSave.setOnClickListener { onSave() }
 
+        // Mostro la versione
         val versionName = try {
             packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
         } catch (e: Exception) {

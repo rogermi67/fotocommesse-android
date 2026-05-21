@@ -17,6 +17,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import it.apconsulting.fotocommesse.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -39,6 +41,14 @@ class MainActivity : AppCompatActivity() {
             refreshList()
         }
 
+    private val barcodeScanner = registerForActivityResult(ScanContract()) { result ->
+        val contents = result.contents
+        if (!contents.isNullOrBlank()) {
+            binding.etCommessa.setText(contents)
+            binding.etCommessa.setSelection(contents.length)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -57,6 +67,9 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnStart.setOnClickListener { onStartClicked() }
 
+        // Barcode scanner via endIcon del TextInputLayout
+        binding.tilCommessa.setEndIconOnClickListener { launchBarcodeScanner() }
+
         binding.rvRecenti.layoutManager = LinearLayoutManager(this)
 
         ensurePermissions()
@@ -67,6 +80,20 @@ class MainActivity : AppCompatActivity() {
         if (hasCameraPermission() && hasStoragePermission()) {
             refreshList()
         }
+    }
+
+    private fun launchBarcodeScanner() {
+        if (!hasCameraPermission()) {
+            requestPermissions.launch(arrayOf(Manifest.permission.CAMERA))
+            return
+        }
+        val options = ScanOptions().apply {
+            setPrompt(getString(R.string.barcode_prompt))
+            setBeepEnabled(true)
+            setOrientationLocked(true)
+            setBarcodeImageEnabled(false)
+        }
+        barcodeScanner.launch(options)
     }
 
     private fun onStartClicked() {
@@ -116,6 +143,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_gallery -> {
+                startActivity(Intent(this, GalleryActivity::class.java))
+                true
+            }
             R.id.action_settings -> {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true
