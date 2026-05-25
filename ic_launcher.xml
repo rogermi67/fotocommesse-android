@@ -1,76 +1,93 @@
 package it.apconsulting.fotocommesse
 
-import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
-import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import it.apconsulting.fotocommesse.databinding.ActivitySettingsBinding
+import android.util.Size
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class SettingsActivity : AppCompatActivity() {
+class GalleryAdapter(
+    private val onTap: (PhotoItem) -> Unit,
+    private val onLongPress: (PhotoItem) -> Unit
+) : ListAdapter<PhotoItem, GalleryAdapter.VH>(DIFF) {
 
-    private lateinit var binding: ActivitySettingsBinding
+    private val selected = mutableSetOf<android.net.Uri>()
+    private val thumbnailJobs = mutableMapOf<Int, Job>()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding = ActivitySettingsBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+    fun setSelection(uris: Set<android.net.Uri>) {
+        selected.clear()
+        selected.addAll(uris)
+        notifyDataSetChanged()
+    }
 
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.apply {
-            setDisplayHomeAsUpEnabled(true)
-            setDisplayShowHomeEnabled(true)
-            title = getString(R.string.settings_title)
-        }
+    inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val image: ImageView = itemView.findViewById(R.id.ivThumbnail)
+        val name: TextView = itemView.findViewById(R.id.tvName)
+        val selectionOverlay: View = itemView.findViewById(R.id.vSelectionOverlay)
+        val checkBadge: View = itemView.findViewById(R.id.vCheckBadge)
+    }
 
-        val current = SettingsManager.getFolderName(this)
-        binding.etFolderName.setText(current)
-        binding.etFolderName.setSelection(current.length)
-        updatePreview(current)
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+        val v = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_gallery_photo, parent, false)
+        return VH(v)
+    }
 
-        binding.etFolderName.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                val raw = s?.toString().orEmpty()
-                val sanitized = PhotoStorage.sanitize(raw)
-                updatePreview(if (sanitized.isBlank()) "—" else sanitized)
+    override fun onBindViewHolder(holder: VH, position: Int) {
+        val item = getItem(position)
+        holder.name.text = item.displayName
+
+        val isSelected = selected.contains(item.uri)
+        holder.selectionOverlay.visibility = if (isSelected) View.VISIBLE else View.GONE
+        holder.checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
+
+        // Cancel previous job for this slot
+        thumbnailJobs[holder.bindingAdapterPosition]?.cancel()
+        holder.image.setImageBitmap(null)
+
+        val ctx = holder.itemView.context
+        val job = CoroutineScope(Dispatchers.Main).launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                try {
+                    ctx.contentResolver.loadThumbnail(item.uri, Size(300, 300), null)
+                } catch (_: Exception) {
+                    null
+                }
             }
-        })
-
-        binding.btnSave.setOnClickListener { onSave() }
-
-        // Mostro la versione
-        val versionName = try {
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
-        } catch (e: Exception) {
-            "?"
+            if (bitmap != null) {
+                holder.image.setImageBitmap(bitmap)
+            }
         }
-        binding.tvVersion.text = getString(R.string.settings_info_version, versionName)
-    }
+        thumbnailJobs[holder.bindingAdapterPosition] = job
 
-    private fun updatePreview(folderName: String) {
-        binding.tvPreview.text = "Pictures/$folderName/"
-    }
-
-    private fun onSave() {
-        val raw = binding.etFolderName.text?.toString().orEmpty()
-        val sanitized = PhotoStorage.sanitize(raw)
-        if (sanitized.isBlank()) {
-            Toast.makeText(this, R.string.toast_invalid_folder, Toast.LENGTH_SHORT).show()
-            return
+        holder.itemView.setOnClickListener { onTap(item) }
+        holder.itemView.setOnLongClickListener {
+            onLongPress(item)
+            true
         }
-        SettingsManager.setFolderName(this, sanitized)
-        Toast.makeText(
-            this,
-            getString(R.string.toast_saved, "Pictures/$sanitized/"),
-            Toast.LENGTH_SHORT
-        ).show()
-        finish()
     }
 
-    override fun onSupportNavigateUp(): Boolean {
-        finish()
-        return true
+    override fun onViewRecycled(holder: VH) {
+        super.onViewRecycled(holder)
+        thumbnailJobs[holder.bindingAdapterPosition]?.cancel()
+        holder.image.setImageBitmap(null)
+    }
+
+    companion object {
+        private val DIFF = object : DiffUtil.ItemCallback<PhotoItem>() {
+            override fun areItemsTheSame(oldItem: PhotoItem, newItem: PhotoItem): Boolean =
+                oldItem.uri == newItem.uri
+            override fun areContentsTheSame(oldItem: PhotoItem, newItem: PhotoItem): Boolean =
+                oldItem == newItem
+        }
     }
 }

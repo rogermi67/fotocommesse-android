@@ -1,4 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <color name="ic_launcher_background">#1565C0</color>
-</resources>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_gallery"
+        android:icon="@drawable/ic_gallery"
+        android:title="@string/menu_gallery"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/action_settings"
+        android:icon="@drawable/ic_settings"
+        android:title="@string/menu_settings"
+        app:showAsAction="always" />
+
+</menu>

@@ -8,7 +8,8 @@ import androidx.recyclerview.widget.RecyclerView
 
 class CommesseAdapter(
     private val items: List<Map.Entry<String, Int>>,
-    private val onClick: (String) -> Unit
+    private val onClick: (String) -> Unit,
+    private val onLongClick: (String) -> Unit
 ) : RecyclerView.Adapter<CommesseAdapter.VH>() {
 
     class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -27,6 +28,10 @@ class CommesseAdapter(
         holder.tvCommessa.text = entry.key
         holder.tvCount.text = "${entry.value} foto"
         holder.itemView.setOnClickListener { onClick(entry.key) }
+        holder.itemView.setOnLongClickListener {
+            onLongClick(entry.key)
+            true
+        }
     }
 
     override fun getItemCount(): Int = items.size

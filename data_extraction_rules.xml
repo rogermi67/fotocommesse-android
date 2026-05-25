@@ -1,139 +1,215 @@
 package it.apconsulting.fotocommesse
 
-import android.content.Context
-import android.media.AudioManager
-import android.media.ToneGenerator
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
-import android.provider.MediaStore
-import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.core.content.ContextCompat
-import it.apconsulting.fotocommesse.databinding.ActivityCameraBinding
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
+import it.apconsulting.fotocommesse.databinding.ActivityGalleryBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class CameraActivity : AppCompatActivity() {
+class GalleryActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityCameraBinding
-    private var imageCapture: ImageCapture? = null
-    private lateinit var cameraExecutor: ExecutorService
-
-    private lateinit var commessa: String
-    private var photoCount: Int = 0
-    private var toneGen: ToneGenerator? = null
+    private lateinit var binding: ActivityGalleryBinding
+    private lateinit var adapter: GalleryAdapter
+    private var photos: List<PhotoItem> = emptyList()
+    private val selectedUris = mutableSetOf<Uri>()
+    private var inSelectionMode: Boolean = false
+    private var keyFilter: String? = null
+    private lateinit var mode: Mode
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityCameraBinding.inflate(layoutInflater)
+        binding = ActivityGalleryBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        commessa = intent.getStringExtra(EXTRA_COMMESSA).orEmpty()
-        if (commessa.isBlank()) {
-            finish()
-            return
+        mode = Mode.fromIntent(intent)
+        keyFilter = intent.getStringExtra(EXTRA_KEY)?.takeIf { it.isNotBlank() }
+
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.apply {
+            setDisplayHomeAsUpEnabled(true)
+            setDisplayShowHomeEnabled(true)
         }
 
-        // photoCount = highest existing index for this commessa
-        photoCount = PhotoStorage.nextIndex(this, commessa) - 1
-        updateUi()
-
-        cameraExecutor = Executors.newSingleThreadExecutor()
-        toneGen = try {
-            ToneGenerator(AudioManager.STREAM_MUSIC, 60)
-        } catch (_: RuntimeException) {
-            null
-        }
-
-        startCamera()
-
-        binding.btnShoot.setOnClickListener { takePhoto() }
-        binding.btnDone.setOnClickListener { finish() }
-    }
-
-    private fun updateUi() {
-        binding.tvCommessa.text = "Commessa: $commessa"
-        binding.tvCount.text =
-            "Scattate: $photoCount\nProssima foto: #${photoCount + 1}"
-    }
-
-    private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(binding.previewView.surfaceProvider)
-            }
-            imageCapture = ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                .build()
-            val selector = CameraSelector.DEFAULT_BACK_CAMERA
-            try {
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, selector, preview, imageCapture)
-            } catch (e: Exception) {
-                Log.e(TAG, "Bind failed", e)
-                Toast.makeText(this, "Errore inizializzazione fotocamera", Toast.LENGTH_LONG).show()
-            }
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun takePhoto() {
-        val capture = imageCapture ?: return
-        binding.btnShoot.isEnabled = false
-
-        val nextIdx = photoCount + 1
-        val contentValues = PhotoStorage.buildContentValues(this, commessa, nextIdx)
-
-        val outputOptions = ImageCapture.OutputFileOptions.Builder(
-            contentResolver,
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            contentValues
-        ).build()
-
-        capture.takePicture(
-            outputOptions,
-            ContextCompat.getMainExecutor(this),
-            object : ImageCapture.OnImageSavedCallback {
-                override fun onError(exc: ImageCaptureException) {
-                    Log.e(TAG, "Capture failed", exc)
-                    Toast.makeText(
-                        this@CameraActivity,
-                        "Errore salvataggio: ${exc.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    binding.btnShoot.isEnabled = true
-                }
-
-                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    photoCount = nextIdx
-                    updateUi()
-                    toneGen?.startTone(ToneGenerator.TONE_PROP_BEEP, 80)
-                    Toast.makeText(
-                        this@CameraActivity,
-                        "Salvata ${commessa}_${nextIdx}.jpg",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    binding.btnShoot.isEnabled = true
-                }
-            }
+        adapter = GalleryAdapter(
+            onTap = { item -> onItemTap(item) },
+            onLongPress = { item -> onItemLongPress(item) }
         )
+        binding.recyclerView.layoutManager = GridLayoutManager(this, 3)
+        binding.recyclerView.adapter = adapter
+
+        binding.tvHelp.text = getString(R.string.gallery_help)
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        cameraExecutor.shutdown()
-        toneGen?.release()
-        toneGen = null
+    override fun onResume() {
+        super.onResume()
+        loadPhotos()
+    }
+
+    private fun loadPhotos() {
+        lifecycleScope.launch {
+            val items = withContext(Dispatchers.IO) {
+                PhotoStorage.listAllPhotos(this@GalleryActivity, mode, keyFilter)
+            }
+            photos = items
+            adapter.submitList(items)
+            updateEmptyState()
+            updateTitle()
+        }
+    }
+
+    private fun updateEmptyState() {
+        if (photos.isEmpty()) {
+            binding.tvEmpty.visibility = View.VISIBLE
+            binding.recyclerView.visibility = View.GONE
+            binding.tvHelp.visibility = View.GONE
+        } else {
+            binding.tvEmpty.visibility = View.GONE
+            binding.recyclerView.visibility = View.VISIBLE
+            binding.tvHelp.visibility = View.VISIBLE
+        }
+    }
+
+    private fun updateTitle() {
+        val baseTitle = when {
+            inSelectionMode -> getString(R.string.gallery_selected, selectedUris.size)
+            keyFilter != null -> {
+                val prefix = if (mode == Mode.LASTRE) "Lastra" else "Commessa"
+                "$prefix $keyFilter"
+            }
+            else -> {
+                val suffix = if (mode == Mode.LASTRE) " — Lastre" else " — Blocchi"
+                getString(R.string.gallery_title) + suffix
+            }
+        }
+        supportActionBar?.title = baseTitle
+        supportActionBar?.subtitle = if (!inSelectionMode) {
+            getString(R.string.gallery_total, photos.size)
+        } else null
+    }
+
+    private fun onItemTap(item: PhotoItem) {
+        if (inSelectionMode) {
+            toggleSelection(item)
+        } else {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(item.uri, "image/*")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+                startActivity(intent)
+            } catch (_: Exception) {
+                Toast.makeText(this, "Nessuna app per aprire l'immagine", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun onItemLongPress(item: PhotoItem) {
+        if (!inSelectionMode) {
+            inSelectionMode = true
+        }
+        toggleSelection(item)
+        invalidateOptionsMenu()
+    }
+
+    private fun toggleSelection(item: PhotoItem) {
+        if (selectedUris.contains(item.uri)) {
+            selectedUris.remove(item.uri)
+        } else {
+            selectedUris.add(item.uri)
+        }
+        if (selectedUris.isEmpty()) {
+            inSelectionMode = false
+            invalidateOptionsMenu()
+        }
+        adapter.setSelection(selectedUris)
+        updateTitle()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.gallery_menu, menu)
+        return true
+    }
+
+    override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
+        menu?.findItem(R.id.action_delete)?.isVisible = inSelectionMode
+        return super.onPrepareOptionsMenu(menu)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_delete -> {
+                confirmDelete()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    override fun onSupportNavigateUp(): Boolean {
+        if (inSelectionMode) {
+            exitSelection()
+        } else {
+            finish()
+        }
+        return true
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (inSelectionMode) {
+            exitSelection()
+        } else {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+        }
+    }
+
+    private fun exitSelection() {
+        inSelectionMode = false
+        selectedUris.clear()
+        adapter.setSelection(emptySet())
+        invalidateOptionsMenu()
+        updateTitle()
+    }
+
+    private fun confirmDelete() {
+        val count = selectedUris.size
+        if (count == 0) return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.gallery_delete_title)
+            .setMessage(getString(R.string.gallery_delete_message, count))
+            .setPositiveButton(R.string.gallery_delete_confirm) { _, _ -> performDelete() }
+            .setNegativeButton(R.string.gallery_delete_cancel, null)
+            .show()
+    }
+
+    private fun performDelete() {
+        val toDelete = selectedUris.toList()
+        lifecycleScope.launch {
+            val deleted = withContext(Dispatchers.IO) {
+                PhotoStorage.deletePhotos(this@GalleryActivity, toDelete)
+            }
+            Toast.makeText(
+                this@GalleryActivity,
+                getString(R.string.gallery_delete_done, deleted),
+                Toast.LENGTH_SHORT
+            ).show()
+            exitSelection()
+            loadPhotos()
+        }
     }
 
     companion object {
-        private const val TAG = "CameraActivity"
-        const val EXTRA_COMMESSA = "commessa"
+        const val EXTRA_KEY = "key_filter"
     }
 }
