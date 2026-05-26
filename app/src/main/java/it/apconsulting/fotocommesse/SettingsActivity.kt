@@ -47,6 +47,10 @@ class SettingsActivity : AppCompatActivity() {
             "?"
         }
         binding.tvVersion.text = getString(R.string.settings_info_version, versionName)
+
+        val provider = SettingsManager.getSyncProviderType(this)
+        binding.tvSyncProvider.text =
+            getString(R.string.settings_sync_active, provider.displayName)
     }
 
     private fun updatePreview() {

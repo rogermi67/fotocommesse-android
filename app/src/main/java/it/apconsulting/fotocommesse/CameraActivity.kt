@@ -13,7 +13,9 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import it.apconsulting.fotocommesse.databinding.ActivityCameraBinding
+import kotlinx.coroutines.launch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -125,6 +127,15 @@ class CameraActivity : AppCompatActivity() {
                         Toast.LENGTH_SHORT
                     ).show()
                     binding.btnShoot.isEnabled = true
+
+                    // Notifica il provider di sincronizzazione (no-op per LocalOnly).
+                    val savedUri = output.savedUri
+                    if (savedUri != null) {
+                        val item = SyncItem(savedUri, fileName, mode)
+                        lifecycleScope.launch {
+                            SyncManager.onPhotoSaved(applicationContext, item)
+                        }
+                    }
                 }
             }
         )

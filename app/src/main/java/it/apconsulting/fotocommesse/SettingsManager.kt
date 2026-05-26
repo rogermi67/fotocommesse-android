@@ -10,12 +10,20 @@ object SettingsManager {
     // Existing key kept for backward compatibility with v1.x installs (= Blocchi folder)
     private const val KEY_FOLDER_BLOCCHI = "folder_name"
     private const val KEY_FOLDER_LASTRE = "folder_name_lastre"
+    private const val KEY_SYNC_PROVIDER = "sync_provider"
 
     const val DEFAULT_FOLDER_BLOCCHI = "FotoBlocchi"
     const val DEFAULT_FOLDER_LASTRE = "FotoLastre"
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    fun getSyncProviderType(context: Context): SyncProviderType =
+        SyncProviderType.fromId(prefs(context).getString(KEY_SYNC_PROVIDER, null))
+
+    fun setSyncProviderType(context: Context, type: SyncProviderType) {
+        prefs(context).edit().putString(KEY_SYNC_PROVIDER, type.id).apply()
+    }
 
     fun getBlocchiFolderName(context: Context): String =
         prefs(context).getString(KEY_FOLDER_BLOCCHI, DEFAULT_FOLDER_BLOCCHI)

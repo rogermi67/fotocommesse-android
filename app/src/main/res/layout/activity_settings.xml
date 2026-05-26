@@ -130,6 +130,15 @@
                 android:textColor="?android:attr/textColorSecondary"
                 android:textSize="13sp" />
 
+            <TextView
+                android:id="@+id/tvSyncProvider"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"

@@ -59,6 +59,7 @@
     <string name="settings_folder_helper">Caratteri consentiti: lettere, numeri, _ e -. Gli altri saranno sostituiti.</string>
     <string name="settings_section_sync">Sincronizzazione cloud</string>
     <string name="settings_sync_description">Per sincronizzare automaticamente le cartelle con OneDrive, configura FolderSync con due coppie di cartelle distinte (una per blocchi, una per lastre).</string>
+    <string name="settings_sync_active">Metodo attivo: %1$s</string>
     <string name="settings_section_info">Informazioni</string>
     <string name="settings_info_version">Versione %1$s</string>
     <string name="powered_by">Powered by AP Consulting</string>
