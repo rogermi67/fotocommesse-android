@@ -109,3 +109,4 @@
     </androidx.constraintlayout.widget.ConstraintLayout>
 
 </LinearLayout>
+v1.5.0
