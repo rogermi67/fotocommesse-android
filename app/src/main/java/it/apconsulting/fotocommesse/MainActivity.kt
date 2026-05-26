@@ -117,11 +117,12 @@ class MainActivity : AppCompatActivity() {
             requestPermissions.launch(arrayOf(Manifest.permission.CAMERA))
             return
         }
-        val options = ScanOptions().apply {
+       val options = ScanOptions().apply {
             setPrompt(getString(R.string.barcode_prompt))
             setBeepEnabled(true)
-            setOrientationLocked(true)
+            setOrientationLocked(false)
             setBarcodeImageEnabled(false)
+            captureActivity = OrientationCaptureActivity::class.java
         }
         barcodeScanner.launch(options)
     }
