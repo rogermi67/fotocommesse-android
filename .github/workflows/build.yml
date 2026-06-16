@@ -47,4 +47,4 @@ jobs:
         with:
           name: FotoCommesse-debug-apk
           path: artifact/*.apk
-          retention-days: 30
+          retention-days: 30 
