@@ -15,11 +15,6 @@ object PhotoStorage {
     fun relativePath(context: Context, mode: Mode): String =
         "${Environment.DIRECTORY_PICTURES}/${folderName(context, mode)}"
 
-    /**
-     * Validates input for the given mode.
-     * - BLOCCHI: any non-blank alphanumeric/underscore/dash string
-     * - LASTRE: must end with "-N" where N is numeric (formato codice-progressivo)
-     */
     fun isValid(input: String, mode: Mode): Boolean {
         val trimmed = input.trim()
         if (trimmed.isBlank()) return false
@@ -29,11 +24,6 @@ object PhotoStorage {
         }
     }
 
-    /**
-     * Returns the next filename for a new photo of the given key (commessa or lastra).
-     * - BLOCCHI: "{key}_{N}.jpg" with N = max existing N + 1 (starting from 1)
-     * - LASTRE: "{key}.jpg" if no existing, else "{key}+{N}.jpg" with N = max existing + 1
-     */
     fun nextFileName(context: Context, key: String, mode: Mode): String {
         return when (mode) {
             Mode.BLOCCHI -> {
@@ -48,16 +38,10 @@ object PhotoStorage {
         }
     }
 
-    /**
-     * Returns the count of photos existing for the given key in the given mode's folder.
-     */
     fun photoCount(context: Context, key: String, mode: Mode): Int {
         return countMatchingPhotos(context, key, mode)
     }
 
-    /**
-     * Map of key -> photo count for all keys found in the given mode's folder.
-     */
     fun listKeysWithCount(context: Context, mode: Mode): Map<String, Int> {
         val folder = folderName(context, mode)
         val projection = arrayOf(MediaStore.Images.Media.DISPLAY_NAME)
@@ -86,9 +70,6 @@ object PhotoStorage {
         return counts
     }
 
-    /**
-     * Lists photos in the given mode's folder, optionally filtered by key.
-     */
     fun listAllPhotos(
         context: Context,
         mode: Mode,
@@ -146,6 +127,16 @@ object PhotoStorage {
         return items
     }
 
+    fun getLastPhoto(context: Context, key: String, mode: Mode): PhotoItem? {
+        val items = listAllPhotos(context, mode, key)
+        return items.firstOrNull()
+    }
+
+    fun totalPhotoCount(context: Context): Int {
+        return listAllPhotos(context, Mode.BLOCCHI).size +
+                listAllPhotos(context, Mode.LASTRE).size
+    }
+
     fun deletePhotos(context: Context, uris: List<Uri>): Int {
         var deleted = 0
         uris.forEach { uri ->
@@ -159,9 +150,6 @@ object PhotoStorage {
         return deleted
     }
 
-    /**
-     * Builds ContentValues for a new photo using an exact filename.
-     */
     fun buildContentValues(context: Context, fileName: String, mode: Mode): ContentValues {
         return ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
@@ -170,15 +158,10 @@ object PhotoStorage {
         }
     }
 
-    /**
-     * Sanitizes a key (commessa/lastra) or folder name.
-     */
     fun sanitize(input: String): String {
         val cleaned = input.trim().replace(Regex("[^A-Za-z0-9_\\-]"), "_")
         return cleaned.trim('_')
     }
-
-    // -- internals ---------------------------------------------------------
 
     private fun maxBlocchiIndex(context: Context, key: String): Int {
         val folder = folderName(context, Mode.BLOCCHI)
@@ -205,12 +188,6 @@ object PhotoStorage {
         return maxIdx
     }
 
-    /**
-     * Returns:
-     *  -1 if no photos exist for this lastra,
-     *   0 if only "{key}.jpg" exists,
-     *   N if "{key}+{N}.jpg" exists (with N = max existing suffix).
-     */
     private fun maxLastreIndex(context: Context, key: String): Int {
         val folder = folderName(context, Mode.LASTRE)
         val projection = arrayOf(MediaStore.Images.Media.DISPLAY_NAME)
