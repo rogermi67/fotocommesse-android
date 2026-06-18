@@ -3,16 +3,11 @@ package it.apconsulting.fotocommesse
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.Menu
 import android.view.MenuItem
-import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -29,24 +24,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var mode: Mode
 
-    private val requestPermissions =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
-            val cameraGranted = results[Manifest.permission.CAMERA] ?: false
-            if (!cameraGranted) {
-                Toast.makeText(
-                    this,
-                    "Il permesso fotocamera è obbligatorio",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-            refreshList()
-        }
+    private val requestCameraPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startCameraForCurrentInput()
+        else Toast.makeText(this, "Permesso fotocamera negato", Toast.LENGTH_SHORT).show()
+    }
 
-    private val barcodeScanner = registerForActivityResult(ScanContract()) { result ->
-        val contents = result.contents
-        if (!contents.isNullOrBlank()) {
-            binding.etCommessa.setText(contents)
-            binding.etCommessa.setSelection(contents.length)
+    private val barcodeLauncher = registerForActivityResult(ScanContract()) { result ->
+        if (result.contents != null) {
+            binding.etCommessa.setText(result.contents)
+            binding.etCommessa.setSelection(result.contents.length)
         }
     }
 
@@ -56,111 +44,85 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         mode = Mode.fromIntent(intent)
-        applyModeUi()
 
         setSupportActionBar(binding.toolbar)
-
-        binding.btnStart.isEnabled = false
-        binding.etCommessa.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                binding.btnStart.isEnabled = !s.isNullOrBlank()
-            }
-        })
-
-        binding.btnStart.setOnClickListener { onStartClicked() }
-        binding.tilCommessa.setEndIconOnClickListener { launchBarcodeScanner() }
-
-        binding.rvRecenti.layoutManager = LinearLayoutManager(this)
-
-        ensurePermissions()
-    }
-
-    private fun applyModeUi() {
-        val titleRes = when (mode) {
-            Mode.BLOCCHI -> R.string.section_blocchi_title
-            Mode.LASTRE -> R.string.section_lastre_title
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        binding.toolbar.title = when (mode) {
+            Mode.BLOCCHI -> getString(R.string.title_blocchi)
+            Mode.LASTRE -> getString(R.string.title_lastre)
         }
-        title = getString(titleRes)
-        binding.toolbar.title = getString(titleRes)
-
-        binding.tvSubtitle.setText(
-            when (mode) {
-                Mode.BLOCCHI -> R.string.subtitle_blocchi
-                Mode.LASTRE -> R.string.subtitle_lastre
-            }
-        )
+        binding.toolbar.setNavigationOnClickListener { finish() }
 
         binding.tilCommessa.hint = when (mode) {
             Mode.BLOCCHI -> getString(R.string.hint_commessa)
             Mode.LASTRE -> getString(R.string.hint_lastra)
         }
+        binding.tilCommessa.setEndIconOnClickListener { launchBarcode() }
 
-        binding.tvSectionRecenti.setText(
-            when (mode) {
-                Mode.BLOCCHI -> R.string.section_recenti_blocchi
-                Mode.LASTRE -> R.string.section_recenti_lastre
-            }
-        )
+        binding.btnAvvia.setOnClickListener { startCameraForCurrentInput() }
+
+        binding.rvRecenti.layoutManager = LinearLayoutManager(this)
+
+        refreshList()
     }
 
     override fun onResume() {
         super.onResume()
-        if (hasCameraPermission() && hasStoragePermission()) {
-            refreshList()
-        }
+        refreshList()
     }
 
-    private fun launchBarcodeScanner() {
-        if (!hasCameraPermission()) {
-            requestPermissions.launch(arrayOf(Manifest.permission.CAMERA))
-            return
-        }
-        val options = ScanOptions().apply {
-            setPrompt(getString(R.string.barcode_prompt))
-            setBeepEnabled(true)
-            setOrientationLocked(false)
-            setBarcodeImageEnabled(false)
-            captureActivity = OrientationCaptureActivity::class.java
-        }
-        barcodeScanner.launch(options)
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
     }
 
-    private fun onStartClicked() {
-        val raw = binding.etCommessa.text.toString().trim()
-        if (raw.isBlank()) return
-        val sanitized = PhotoStorage.sanitize(raw)
-
-        if (sanitized.isBlank()) {
-            Toast.makeText(this, "Valore non valido", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (!PhotoStorage.isValid(sanitized, mode)) {
-            val msg = if (mode == Mode.LASTRE) {
-                "Formato lastra non valido.\nUsa codice-progressivo (es. 12345-3)"
-            } else {
-                "Valore non valido"
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                true
             }
-            AlertDialog.Builder(this)
-                .setTitle("Input non valido")
-                .setMessage(msg)
-                .setPositiveButton("OK", null)
-                .show()
+            R.id.action_gallery -> {
+                val intent = Intent(this, GalleryActivity::class.java).apply {
+                    putExtra(Mode.EXTRA_MODE, mode.name)
+                }
+                startActivity(intent)
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun startCameraForCurrentInput() {
+        val raw = binding.etCommessa.text?.toString().orEmpty()
+        if (!PhotoStorage.isValid(raw, mode)) {
+            val msg = when (mode) {
+                Mode.BLOCCHI -> "Inserisci un numero commessa"
+                Mode.LASTRE -> "Codice non valido. Formato richiesto: numero-progressivo (es. 12345-3)"
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
             return
         }
-
-        if (sanitized != raw) {
-            AlertDialog.Builder(this)
-                .setTitle("Caratteri non consentiti")
-                .setMessage("Verrà salvato come \"$sanitized\".\nProcedere?")
-                .setPositiveButton("Conferma") { _, _ -> launchCamera(sanitized) }
-                .setNegativeButton("Annulla", null)
-                .show()
-        } else {
-            launchCamera(sanitized)
+        val key = PhotoStorage.sanitize(raw)
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestCameraPermission.launch(Manifest.permission.CAMERA)
+            return
         }
+        launchCamera(key)
+    }
+
+    private fun launchBarcode() {
+        val options = ScanOptions()
+            .setDesiredBarcodeFormats(ScanOptions.ALL_CODE_TYPES)
+            .setPrompt("Inquadra il codice a barre o QR")
+            .setBeepEnabled(true)
+            .setOrientationLocked(false)
+            .setCaptureActivity(OrientationCaptureActivity::class.java)
+        barcodeLauncher.launch(options)
     }
 
     private fun launchCamera(key: String) {
@@ -171,14 +133,66 @@ class MainActivity : AppCompatActivity() {
         startActivity(intent)
     }
 
+    private fun openNoteEditor(key: String) {
+        lifecycleScope.launch {
+            val current = withContext(Dispatchers.IO) {
+                NoteStorage.read(this@MainActivity, key, mode)
+            }
+            val input = android.widget.EditText(this@MainActivity).apply {
+                setText(current)
+                minLines = 4
+                maxLines = 10
+                gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                setHorizontallyScrolling(false)
+                setPadding(48, 32, 48, 32)
+                hint = getString(R.string.note_hint)
+            }
+            val title = if (mode == Mode.LASTRE) "Nota lastra $key" else "Nota commessa $key"
+            androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
+                .setTitle(title)
+                .setView(input)
+                .setPositiveButton(R.string.btn_save) { _, _ ->
+                    val text = input.text.toString()
+                    lifecycleScope.launch {
+                        val ok = withContext(Dispatchers.IO) {
+                            NoteStorage.write(this@MainActivity, key, mode, text)
+                        }
+                        if (!ok) {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Errore salvataggio nota",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        refreshList()
+                    }
+                }
+                .setNegativeButton("Annulla", null)
+                .setNeutralButton(R.string.note_delete) { _, _ ->
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) {
+                            NoteStorage.delete(this@MainActivity, key, mode)
+                        }
+                        refreshList()
+                    }
+                }
+                .show()
+        }
+    }
+
     private fun refreshList() {
         lifecycleScope.launch {
-            val counts = withContext(Dispatchers.IO) {
-                PhotoStorage.listKeysWithCount(this@MainActivity, mode)
+            val (counts, noted) = withContext(Dispatchers.IO) {
+                val c = PhotoStorage.listKeysWithCount(this@MainActivity, mode)
+                val n = c.keys.filter {
+                    NoteStorage.exists(this@MainActivity, it, mode)
+                }.toSet()
+                c to n
             }
             val items = counts.entries.sortedByDescending { it.key }
             binding.rvRecenti.adapter = CommesseAdapter(
                 items,
+                notedKeys = noted,
                 onClick = { key ->
                     binding.etCommessa.setText(key)
                     binding.etCommessa.setSelection(key.length)
@@ -189,64 +203,9 @@ class MainActivity : AppCompatActivity() {
                         putExtra(Mode.EXTRA_MODE, mode.name)
                     }
                     startActivity(intent)
-                }
+                },
+                onNoteClick = { key -> openNoteEditor(key) }
             )
-            binding.tvNoData.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
-            val tot = counts.values.sum()
-            binding.tvTotalCount.text = if (mode == Mode.LASTRE) {
-                "${items.size} lastre, $tot foto totali"
-            } else {
-                "${items.size} commesse, $tot foto totali"
-            }
-        }
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        menuInflater.inflate(R.menu.main_menu, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_gallery -> {
-                val intent = Intent(this, GalleryActivity::class.java).apply {
-                    putExtra(Mode.EXTRA_MODE, mode.name)
-                }
-                startActivity(intent)
-                true
-            }
-            R.id.action_settings -> {
-                startActivity(Intent(this, SettingsActivity::class.java))
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
-    }
-
-    private fun ensurePermissions() {
-        val needed = mutableListOf<String>()
-        if (!hasCameraPermission()) needed += Manifest.permission.CAMERA
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            needed += Manifest.permission.READ_MEDIA_IMAGES
-        }
-        if (needed.isNotEmpty()) {
-            requestPermissions.launch(needed.toTypedArray())
-        }
-    }
-
-    private fun hasCameraPermission(): Boolean =
-        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-            PackageManager.PERMISSION_GRANTED
-
-    private fun hasStoragePermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) ==
-                PackageManager.PERMISSION_GRANTED
-        } else {
-            true
         }
     }
 }
