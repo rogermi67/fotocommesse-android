@@ -1,10 +1,13 @@
 package it.apconsulting.fotocommesse
 
+import android.content.Intent
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
+import android.util.Size
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
@@ -15,77 +18,118 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import it.apconsulting.fotocommesse.databinding.ActivityCameraBinding
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class CameraActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityCameraBinding
-    private var imageCapture: ImageCapture? = null
-    private lateinit var cameraExecutor: ExecutorService
+    companion object {
+        const val EXTRA_KEY = "extra_key"
+        private const val TAG = "CameraActivity"
+    }
 
+    private lateinit var binding: ActivityCameraBinding
     private lateinit var key: String
     private lateinit var mode: Mode
-    private var photoCount: Int = 0
+    private var imageCapture: ImageCapture? = null
+    private lateinit var cameraExecutor: ExecutorService
     private var toneGen: ToneGenerator? = null
+    private var photoCount: Int = 0
+    private var lastPhotoUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityCameraBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        key = intent.getStringExtra(EXTRA_KEY) ?: run { finish(); return }
         mode = Mode.fromIntent(intent)
-        key = intent.getStringExtra(EXTRA_KEY).orEmpty()
-        if (key.isBlank()) {
-            finish()
-            return
+
+        cameraExecutor = Executors.newSingleThreadExecutor()
+        toneGen = try {
+            ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+        } catch (_: RuntimeException) {
+            null
         }
 
         photoCount = PhotoStorage.photoCount(this, key, mode)
         updateUi()
 
-        cameraExecutor = Executors.newSingleThreadExecutor()
-        toneGen = try {
-            ToneGenerator(AudioManager.STREAM_MUSIC, 60)
-        } catch (_: RuntimeException) {
-            null
-        }
-
         startCamera()
 
         binding.btnShoot.setOnClickListener { takePhoto() }
         binding.btnDone.setOnClickListener { finish() }
+
+        binding.ivLastThumbnail.setOnClickListener {
+            lastPhotoUri?.let { openInExternalViewer(it) }
+        }
+
+        refreshLastThumbnail()
+    }
+
+    private fun refreshLastThumbnail() {
+        lifecycleScope.launch {
+            val last = withContext(Dispatchers.IO) {
+                PhotoStorage.getLastPhoto(this@CameraActivity, key, mode)
+            }
+            if (last == null) {
+                binding.ivLastThumbnail.visibility = android.view.View.INVISIBLE
+                lastPhotoUri = null
+                return@launch
+            }
+            lastPhotoUri = last.uri
+            val bmp = withContext(Dispatchers.IO) {
+                try {
+                    contentResolver.loadThumbnail(last.uri, Size(200, 200), null)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            if (bmp != null) {
+                binding.ivLastThumbnail.setImageBitmap(bmp)
+                binding.ivLastThumbnail.visibility = android.view.View.VISIBLE
+            } else {
+                binding.ivLastThumbnail.visibility = android.view.View.INVISIBLE
+            }
+        }
+    }
+
+    private fun openInExternalViewer(uri: Uri) {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "image/*")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            Toast.makeText(this, "Nessuna app per aprire l'immagine", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun updateUi() {
-        val label = when (mode) {
-            Mode.BLOCCHI -> "Commessa: $key"
-            Mode.LASTRE -> "Lastra: $key"
-        }
-        binding.tvCommessa.text = label
-
-        val nextFileName = PhotoStorage.nextFileName(this, key, mode)
-        binding.tvCount.text = "Scattate: $photoCount\nProssimo file: $nextFileName"
+        binding.tvCommessa.text = key
+        binding.tvCount.text = "$photoCount foto"
     }
 
     private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(binding.previewView.surfaceProvider)
+        val providerFuture = ProcessCameraProvider.getInstance(this)
+        providerFuture.addListener({
+            val provider = providerFuture.get()
+            val preview = Preview.Builder().build().apply {
+                surfaceProvider = binding.previewView.surfaceProvider
             }
             imageCapture = ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                 .build()
             val selector = CameraSelector.DEFAULT_BACK_CAMERA
             try {
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, selector, preview, imageCapture)
+                provider.unbindAll()
+                provider.bindToLifecycle(this, selector, preview, imageCapture)
             } catch (e: Exception) {
-                Log.e(TAG, "Bind failed", e)
-                Toast.makeText(this, "Errore inizializzazione fotocamera", Toast.LENGTH_LONG).show()
+                Log.e(TAG, "Errore bind camera", e)
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -95,12 +139,12 @@ class CameraActivity : AppCompatActivity() {
         binding.btnShoot.isEnabled = false
 
         val fileName = PhotoStorage.nextFileName(this, key, mode)
-        val contentValues = PhotoStorage.buildContentValues(this, fileName, mode)
+        val values = PhotoStorage.buildContentValues(this, fileName, mode)
 
         val outputOptions = ImageCapture.OutputFileOptions.Builder(
             contentResolver,
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            contentValues
+            values
         ).build()
 
         capture.takePicture(
@@ -108,10 +152,10 @@ class CameraActivity : AppCompatActivity() {
             ContextCompat.getMainExecutor(this),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onError(exc: ImageCaptureException) {
-                    Log.e(TAG, "Capture failed", exc)
+                    Log.e(TAG, "Errore scatto", exc)
                     Toast.makeText(
                         this@CameraActivity,
-                        "Errore salvataggio: ${exc.message}",
+                        "Errore: ${exc.message}",
                         Toast.LENGTH_LONG
                     ).show()
                     binding.btnShoot.isEnabled = true
@@ -120,6 +164,7 @@ class CameraActivity : AppCompatActivity() {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     photoCount = PhotoStorage.photoCount(this@CameraActivity, key, mode)
                     updateUi()
+                    refreshLastThumbnail()
                     toneGen?.startTone(ToneGenerator.TONE_PROP_BEEP, 80)
                     Toast.makeText(
                         this@CameraActivity,
@@ -128,7 +173,6 @@ class CameraActivity : AppCompatActivity() {
                     ).show()
                     binding.btnShoot.isEnabled = true
 
-                    // Notifica il provider di sincronizzazione (no-op per LocalOnly).
                     val savedUri = output.savedUri
                     if (savedUri != null) {
                         val item = SyncItem(savedUri, fileName, mode)
@@ -145,11 +189,5 @@ class CameraActivity : AppCompatActivity() {
         super.onDestroy()
         cameraExecutor.shutdown()
         toneGen?.release()
-        toneGen = null
-    }
-
-    companion object {
-        private const val TAG = "CameraActivity"
-        const val EXTRA_KEY = "key"
     }
 }
