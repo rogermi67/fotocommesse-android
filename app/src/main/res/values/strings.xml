@@ -66,4 +66,11 @@
 
     <string name="btn_save">SALVA</string>
     <string name="toast_invalid_folder">Nome cartella non valido</string>
+
+    <!-- v1.5.1 -->
+    <string name="cd_last_photo">Ultima foto scattata</string>
+    <string name="cd_edit_note">Modifica nota</string>
+    <string name="note_hint">Scrivi qui le tue annotazioni…</string>
+    <string name="note_delete">Elimina nota</string>
+    <string name="landing_photo_stats_local">%1$d foto totali sul dispositivo</string>
 </resources>
