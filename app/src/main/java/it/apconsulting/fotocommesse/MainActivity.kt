@@ -48,10 +48,19 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         binding.toolbar.title = when (mode) {
-            Mode.BLOCCHI -> getString(R.string.title_blocchi)
-            Mode.LASTRE -> getString(R.string.title_lastre)
+            Mode.BLOCCHI -> getString(R.string.section_blocchi_title)
+            Mode.LASTRE -> getString(R.string.section_lastre_title)
         }
         binding.toolbar.setNavigationOnClickListener { finish() }
+
+        binding.tvSubtitle.text = when (mode) {
+            Mode.BLOCCHI -> getString(R.string.subtitle_blocchi)
+            Mode.LASTRE -> getString(R.string.subtitle_lastre)
+        }
+        binding.tvSectionRecenti.text = when (mode) {
+            Mode.BLOCCHI -> getString(R.string.section_recenti_blocchi)
+            Mode.LASTRE -> getString(R.string.section_recenti_lastre)
+        }
 
         binding.tilCommessa.hint = when (mode) {
             Mode.BLOCCHI -> getString(R.string.hint_commessa)
@@ -59,7 +68,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.tilCommessa.setEndIconOnClickListener { launchBarcode() }
 
-        binding.btnAvvia.setOnClickListener { startCameraForCurrentInput() }
+        binding.btnStart.setOnClickListener { startCameraForCurrentInput() }
 
         binding.rvRecenti.layoutManager = LinearLayoutManager(this)
 
@@ -190,6 +199,10 @@ class MainActivity : AppCompatActivity() {
                 c to n
             }
             val items = counts.entries.sortedByDescending { it.key }
+            val totalForMode = items.sumOf { it.value }
+            binding.tvTotalCount.text = getString(R.string.gallery_total, totalForMode)
+            binding.tvNoData.visibility =
+                if (items.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
             binding.rvRecenti.adapter = CommesseAdapter(
                 items,
                 notedKeys = noted,
