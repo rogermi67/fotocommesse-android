@@ -1,252 +1,186 @@
 package it.apconsulting.fotocommesse
 
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
-import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
-import android.view.Menu
-import android.view.MenuItem
-import android.view.View
-import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
-import it.apconsulting.fotocommesse.databinding.ActivityMainBinding
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import android.content.ContentValues
+import android.content.Context
+import android.net.Uri
+import android.os.Environment
+import android.provider.MediaStore
+import android.util.Log
+import java.io.File
 
-class MainActivity : AppCompatActivity() {
+/**
+ * Gestisce note testuali associate a una chiave (commessa o lastra).
+ *
+ * Tenta di salvare il file `{key}_note.txt` nella stessa cartella delle foto
+ * (es. Pictures/FotoBlocchi/12345_note.txt) usando MediaStore.Files.
+ * Se Android rifiuta (per via dello scoped storage), fa fallback a uno storage
+ * privato dell'app, garantendo che la funzionalità non si rompa mai.
+ *
+ * Nota di design: con la sync attuale (FolderSync esterno) il file .txt
+ * potrebbe non essere ripreso dal folderpair (configurato per immagini).
+ * Quando passeremo a un provider cloud nativo (es. pCloud), sarà il provider
+ * stesso a caricare anche le note sul cloud insieme alle foto.
+ */
+object NoteStorage {
 
-    private lateinit var binding: ActivityMainBinding
-    private lateinit var mode: Mode
+    private const val TAG = "NoteStorage"
+    private const val NOTE_SUFFIX = "_note.txt"
 
-    private val requestPermissions =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
-            val cameraGranted = results[Manifest.permission.CAMERA] ?: false
-            if (!cameraGranted) {
-                Toast.makeText(
-                    this,
-                    "Il permesso fotocamera è obbligatorio",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-            refreshList()
-        }
+    private fun fileName(key: String): String = "$key$NOTE_SUFFIX"
 
-    private val barcodeScanner = registerForActivityResult(ScanContract()) { result ->
-        val contents = result.contents
-        if (!contents.isNullOrBlank()) {
-            binding.etCommessa.setText(contents)
-            binding.etCommessa.setSelection(contents.length)
-        }
+    private fun privateNoteFile(context: Context, key: String, mode: Mode): File {
+        val baseDir = context.getExternalFilesDir(null) ?: context.filesDir
+        val folder = PhotoStorage.folderName(context, mode)
+        val dir = File(baseDir, "notes/$folder")
+        if (!dir.exists()) dir.mkdirs()
+        return File(dir, fileName(key))
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
-        mode = Mode.fromIntent(intent)
-        applyModeUi()
-
-        setSupportActionBar(binding.toolbar)
-
-        binding.btnStart.isEnabled = false
-        binding.etCommessa.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                binding.btnStart.isEnabled = !s.isNullOrBlank()
-            }
-        })
-
-        binding.btnStart.setOnClickListener { onStartClicked() }
-        binding.tilCommessa.setEndIconOnClickListener { launchBarcodeScanner() }
-
-        binding.rvRecenti.layoutManager = LinearLayoutManager(this)
-
-        ensurePermissions()
-    }
-
-    private fun applyModeUi() {
-        val titleRes = when (mode) {
-            Mode.BLOCCHI -> R.string.section_blocchi_title
-            Mode.LASTRE -> R.string.section_lastre_title
-        }
-        title = getString(titleRes)
-        binding.toolbar.title = getString(titleRes)
-
-        binding.tvSubtitle.setText(
-            when (mode) {
-                Mode.BLOCCHI -> R.string.subtitle_blocchi
-                Mode.LASTRE -> R.string.subtitle_lastre
-            }
+    /**
+     * Returns the URI of the note file in MediaStore, if it exists.
+     */
+    private fun findMediaStoreUri(context: Context, key: String, mode: Mode): Uri? {
+        val folder = PhotoStorage.folderName(context, mode)
+        val target = fileName(key)
+        val projection = arrayOf(
+            MediaStore.Files.FileColumns._ID,
+            MediaStore.Files.FileColumns.DISPLAY_NAME,
+            MediaStore.Files.FileColumns.RELATIVE_PATH
         )
+        val selection = "${MediaStore.Files.FileColumns.RELATIVE_PATH} LIKE ? " +
+                "AND ${MediaStore.Files.FileColumns.DISPLAY_NAME} = ?"
+        val selectionArgs = arrayOf("%$folder%", target)
+        val collection = MediaStore.Files.getContentUri("external")
 
-        binding.tilCommessa.hint = when (mode) {
-            Mode.BLOCCHI -> getString(R.string.hint_commessa)
-            Mode.LASTRE -> getString(R.string.hint_lastra)
-        }
-
-        binding.tvSectionRecenti.setText(
-            when (mode) {
-                Mode.BLOCCHI -> R.string.section_recenti_blocchi
-                Mode.LASTRE -> R.string.section_recenti_lastre
-            }
-        )
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (hasCameraPermission() && hasStoragePermission()) {
-            refreshList()
-        }
-    }
-
-    private fun launchBarcodeScanner() {
-        if (!hasCameraPermission()) {
-            requestPermissions.launch(arrayOf(Manifest.permission.CAMERA))
-            return
-        }
-        val options = ScanOptions().apply {
-            setPrompt(getString(R.string.barcode_prompt))
-            setBeepEnabled(true)
-            setOrientationLocked(false)
-            setBarcodeImageEnabled(false)
-            captureActivity = OrientationCaptureActivity::class.java
-        }
-        barcodeScanner.launch(options)
-    }
-
-    private fun onStartClicked() {
-        val raw = binding.etCommessa.text.toString().trim()
-        if (raw.isBlank()) return
-        val sanitized = PhotoStorage.sanitize(raw)
-
-        if (sanitized.isBlank()) {
-            Toast.makeText(this, "Valore non valido", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (!PhotoStorage.isValid(sanitized, mode)) {
-            val msg = if (mode == Mode.LASTRE) {
-                "Formato lastra non valido.\nUsa codice-progressivo (es. 12345-3)"
-            } else {
-                "Valore non valido"
-            }
-            AlertDialog.Builder(this)
-                .setTitle("Input non valido")
-                .setMessage(msg)
-                .setPositiveButton("OK", null)
-                .show()
-            return
-        }
-
-        if (sanitized != raw) {
-            AlertDialog.Builder(this)
-                .setTitle("Caratteri non consentiti")
-                .setMessage("Verrà salvato come \"$sanitized\".\nProcedere?")
-                .setPositiveButton("Conferma") { _, _ -> launchCamera(sanitized) }
-                .setNegativeButton("Annulla", null)
-                .show()
-        } else {
-            launchCamera(sanitized)
-        }
-    }
-
-    private fun launchCamera(key: String) {
-        val intent = Intent(this, CameraActivity::class.java).apply {
-            putExtra(CameraActivity.EXTRA_KEY, key)
-            putExtra(Mode.EXTRA_MODE, mode.name)
-        }
-        startActivity(intent)
-    }
-
-    private fun refreshList() {
-        lifecycleScope.launch {
-            val counts = withContext(Dispatchers.IO) {
-                PhotoStorage.listKeysWithCount(this@MainActivity, mode)
-            }
-            val items = counts.entries.sortedByDescending { it.key }
-            binding.rvRecenti.adapter = CommesseAdapter(
-                items,
-                onClick = { key ->
-                    binding.etCommessa.setText(key)
-                    binding.etCommessa.setSelection(key.length)
-                },
-                onLongClick = { key ->
-                    val intent = Intent(this@MainActivity, GalleryActivity::class.java).apply {
-                        putExtra(GalleryActivity.EXTRA_KEY, key)
-                        putExtra(Mode.EXTRA_MODE, mode.name)
-                    }
-                    startActivity(intent)
+        context.contentResolver.query(collection, projection, selection, selectionArgs, null)
+            ?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+                    val id = cursor.getLong(idCol)
+                    return android.content.ContentUris.withAppendedId(collection, id)
                 }
-            )
-            binding.tvNoData.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
-            val tot = counts.values.sum()
-            binding.tvTotalCount.text = if (mode == Mode.LASTRE) {
-                "${items.size} lastre, $tot foto totali"
-            } else {
-                "${items.size} commesse, $tot foto totali"
             }
-        }
+        return null
     }
 
-    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        menuInflater.inflate(R.menu.main_menu, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_gallery -> {
-                val intent = Intent(this, GalleryActivity::class.java).apply {
-                    putExtra(Mode.EXTRA_MODE, mode.name)
+    /**
+     * Reads the note for the given key/mode.
+     * Searches MediaStore first; if not found, falls back to private storage.
+     * Returns empty string if no note exists.
+     */
+    fun read(context: Context, key: String, mode: Mode): String {
+        // 1) MediaStore
+        try {
+            val uri = findMediaStoreUri(context, key, mode)
+            if (uri != null) {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    return stream.bufferedReader(Charsets.UTF_8).readText()
                 }
-                startActivity(intent)
-                true
             }
-            R.id.action_settings -> {
-                startActivity(Intent(this, SettingsActivity::class.java))
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
+        } catch (e: Exception) {
+            Log.w(TAG, "Read from MediaStore failed: ${e.message}")
         }
+        // 2) Fallback storage privato
+        val privateFile = privateNoteFile(context, key, mode)
+        return if (privateFile.exists()) {
+            try {
+                privateFile.readText(Charsets.UTF_8)
+            } catch (e: Exception) {
+                Log.w(TAG, "Read from private file failed: ${e.message}")
+                ""
+            }
+        } else ""
     }
 
-    private fun ensurePermissions() {
-        val needed = mutableListOf<String>()
-        if (!hasCameraPermission()) needed += Manifest.permission.CAMERA
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            needed += Manifest.permission.READ_MEDIA_IMAGES
+    /**
+     * Writes the note. If text is blank, deletes the existing note.
+     * Tries MediaStore (same folder as photos) first; falls back to private storage.
+     */
+    fun write(context: Context, key: String, mode: Mode, text: String): Boolean {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) {
+            return delete(context, key, mode)
         }
-        if (needed.isNotEmpty()) {
-            requestPermissions.launch(needed.toTypedArray())
+        // 1) Try MediaStore
+        val mediaOk = writeToMediaStore(context, key, mode, trimmed)
+        if (mediaOk) {
+            // Cleanup dell'eventuale duplicato in private storage
+            privateNoteFile(context, key, mode).takeIf { it.exists() }?.delete()
+            return true
         }
-    }
-
-    private fun hasCameraPermission(): Boolean =
-        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-            PackageManager.PERMISSION_GRANTED
-
-    private fun hasStoragePermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) ==
-                PackageManager.PERMISSION_GRANTED
-        } else {
+        // 2) Fallback private storage
+        return try {
+            privateNoteFile(context, key, mode).writeText(trimmed, Charsets.UTF_8)
             true
+        } catch (e: Exception) {
+            Log.e(TAG, "Write to private file failed", e)
+            false
         }
+    }
+
+    private fun writeToMediaStore(
+        context: Context,
+        key: String,
+        mode: Mode,
+        text: String
+    ): Boolean {
+        return try {
+            // Se esiste, riscrivilo direttamente
+            val existing = findMediaStoreUri(context, key, mode)
+            if (existing != null) {
+                context.contentResolver.openOutputStream(existing, "wt")?.use { os ->
+                    os.write(text.toByteArray(Charsets.UTF_8))
+                }
+                return true
+            }
+            // Altrimenti crea
+            val folder = PhotoStorage.folderName(context, mode)
+            val values = ContentValues().apply {
+                put(MediaStore.Files.FileColumns.DISPLAY_NAME, fileName(key))
+                put(MediaStore.Files.FileColumns.MIME_TYPE, "text/plain")
+                put(
+                    MediaStore.Files.FileColumns.RELATIVE_PATH,
+                    "${Environment.DIRECTORY_PICTURES}/$folder"
+                )
+            }
+            val collection = MediaStore.Files.getContentUri("external")
+            val uri = context.contentResolver.insert(collection, values) ?: return false
+            context.contentResolver.openOutputStream(uri)?.use { os ->
+                os.write(text.toByteArray(Charsets.UTF_8))
+            }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "MediaStore write failed: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Returns true if a note exists for the given key/mode (in either storage).
+     */
+    fun exists(context: Context, key: String, mode: Mode): Boolean {
+        if (findMediaStoreUri(context, key, mode) != null) return true
+        return privateNoteFile(context, key, mode).exists()
+    }
+
+    /**
+     * Deletes the note from both storages, if present.
+     */
+    fun delete(context: Context, key: String, mode: Mode): Boolean {
+        var anyDeleted = false
+        try {
+            val uri = findMediaStoreUri(context, key, mode)
+            if (uri != null) {
+                val rows = context.contentResolver.delete(uri, null, null)
+                if (rows > 0) anyDeleted = true
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "MediaStore delete failed: ${e.message}")
+        }
+        val privateFile = privateNoteFile(context, key, mode)
+        if (privateFile.exists()) {
+            if (privateFile.delete()) anyDeleted = true
+        }
+        return anyDeleted
     }
 }

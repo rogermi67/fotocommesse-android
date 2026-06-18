@@ -1,93 +1,53 @@
 package it.apconsulting.fotocommesse
 
-import android.util.Size
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
-import android.widget.ImageView
-import android.widget.TextView
-import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.ListAdapter
-import androidx.recyclerview.widget.RecyclerView
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import android.content.Context
+import android.util.Log
 
-class GalleryAdapter(
-    private val onTap: (PhotoItem) -> Unit,
-    private val onLongPress: (PhotoItem) -> Unit
-) : ListAdapter<PhotoItem, GalleryAdapter.VH>(DIFF) {
+/**
+ * Punto centrale che instrada le foto verso il provider di sincronizzazione attivo.
+ *
+ * Il resto dell'app (es. CameraActivity) chiama solo SyncManager.onPhotoSaved(...),
+ * senza conoscere quale provider è configurato.
+ *
+ * Per ora gestisce LocalOnly (no-op). Quando aggiungeremo provider cloud,
+ * qui introdurremo l'accodamento via WorkManager per upload resilienti in background.
+ */
+object SyncManager {
 
-    private val selected = mutableSetOf<android.net.Uri>()
-    private val thumbnailJobs = mutableMapOf<Int, Job>()
+    private const val TAG = "SyncManager"
 
-    fun setSelection(uris: Set<android.net.Uri>) {
-        selected.clear()
-        selected.addAll(uris)
-        notifyDataSetChanged()
-    }
-
-    inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        val image: ImageView = itemView.findViewById(R.id.ivThumbnail)
-        val name: TextView = itemView.findViewById(R.id.tvName)
-        val selectionOverlay: View = itemView.findViewById(R.id.vSelectionOverlay)
-        val checkBadge: View = itemView.findViewById(R.id.vCheckBadge)
-    }
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-        val v = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_gallery_photo, parent, false)
-        return VH(v)
-    }
-
-    override fun onBindViewHolder(holder: VH, position: Int) {
-        val item = getItem(position)
-        holder.name.text = item.displayName
-
-        val isSelected = selected.contains(item.uri)
-        holder.selectionOverlay.visibility = if (isSelected) View.VISIBLE else View.GONE
-        holder.checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
-
-        // Cancel previous job for this slot
-        thumbnailJobs[holder.bindingAdapterPosition]?.cancel()
-        holder.image.setImageBitmap(null)
-
-        val ctx = holder.itemView.context
-        val job = CoroutineScope(Dispatchers.Main).launch {
-            val bitmap = withContext(Dispatchers.IO) {
-                try {
-                    ctx.contentResolver.loadThumbnail(item.uri, Size(300, 300), null)
-                } catch (_: Exception) {
-                    null
-                }
-            }
-            if (bitmap != null) {
-                holder.image.setImageBitmap(bitmap)
-            }
-        }
-        thumbnailJobs[holder.bindingAdapterPosition] = job
-
-        holder.itemView.setOnClickListener { onTap(item) }
-        holder.itemView.setOnLongClickListener {
-            onLongPress(item)
-            true
+    /**
+     * Restituisce l'istanza del provider attualmente selezionato nelle impostazioni.
+     */
+    fun providerFor(type: SyncProviderType): SyncProvider {
+        return when (type) {
+            SyncProviderType.LOCAL_ONLY -> LocalOnlyProvider()
+            // SyncProviderType.PCLOUD -> PCloudProvider()
+            // SyncProviderType.DROPBOX -> DropboxProvider()
+            // ...
         }
     }
 
-    override fun onViewRecycled(holder: VH) {
-        super.onViewRecycled(holder)
-        thumbnailJobs[holder.bindingAdapterPosition]?.cancel()
-        holder.image.setImageBitmap(null)
-    }
+    fun activeProvider(context: Context): SyncProvider =
+        providerFor(SettingsManager.getSyncProviderType(context))
 
-    companion object {
-        private val DIFF = object : DiffUtil.ItemCallback<PhotoItem>() {
-            override fun areItemsTheSame(oldItem: PhotoItem, newItem: PhotoItem): Boolean =
-                oldItem.uri == newItem.uri
-            override fun areContentsTheSame(oldItem: PhotoItem, newItem: PhotoItem): Boolean =
-                oldItem == newItem
+    /**
+     * Notifica che una nuova foto è stata salvata localmente.
+     *
+     * Per LocalOnly non fa nulla (la sync è esterna). Per i provider cloud futuri,
+     * questo sarà il punto in cui la foto viene accodata per l'upload in background.
+     */
+    suspend fun onPhotoSaved(context: Context, item: SyncItem): SyncResult {
+        val provider = activeProvider(context)
+        if (!provider.isConfigured(context)) {
+            Log.w(TAG, "Provider ${provider.type.id} non configurato, skip upload")
+            return SyncResult.Failure("Provider non configurato", retryable = false)
+        }
+        return try {
+            provider.upload(context, item)
+        } catch (e: Exception) {
+            Log.e(TAG, "Errore upload", e)
+            SyncResult.Failure(e.message ?: "Errore sconosciuto", retryable = true)
         }
     }
 }

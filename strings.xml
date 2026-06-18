@@ -1,42 +1,93 @@
 package it.apconsulting.fotocommesse
 
-import android.content.Context
-import android.content.SharedPreferences
+import android.util.Size
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-object SettingsManager {
+class GalleryAdapter(
+    private val onTap: (PhotoItem) -> Unit,
+    private val onLongPress: (PhotoItem) -> Unit
+) : ListAdapter<PhotoItem, GalleryAdapter.VH>(DIFF) {
 
-    private const val PREFS_NAME = "foto_blocchi_prefs"
+    private val selected = mutableSetOf<android.net.Uri>()
+    private val thumbnailJobs = mutableMapOf<Int, Job>()
 
-    // Existing key kept for backward compatibility with v1.x installs (= Blocchi folder)
-    private const val KEY_FOLDER_BLOCCHI = "folder_name"
-    private const val KEY_FOLDER_LASTRE = "folder_name_lastre"
-
-    const val DEFAULT_FOLDER_BLOCCHI = "FotoBlocchi"
-    const val DEFAULT_FOLDER_LASTRE = "FotoLastre"
-
-    private fun prefs(context: Context): SharedPreferences =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-
-    fun getBlocchiFolderName(context: Context): String =
-        prefs(context).getString(KEY_FOLDER_BLOCCHI, DEFAULT_FOLDER_BLOCCHI)
-            ?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_FOLDER_BLOCCHI
-
-    fun setBlocchiFolderName(context: Context, name: String) {
-        prefs(context).edit().putString(KEY_FOLDER_BLOCCHI, name).apply()
+    fun setSelection(uris: Set<android.net.Uri>) {
+        selected.clear()
+        selected.addAll(uris)
+        notifyDataSetChanged()
     }
 
-    fun getLastreFolderName(context: Context): String =
-        prefs(context).getString(KEY_FOLDER_LASTRE, DEFAULT_FOLDER_LASTRE)
-            ?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_FOLDER_LASTRE
-
-    fun setLastreFolderName(context: Context, name: String) {
-        prefs(context).edit().putString(KEY_FOLDER_LASTRE, name).apply()
+    inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val image: ImageView = itemView.findViewById(R.id.ivThumbnail)
+        val name: TextView = itemView.findViewById(R.id.tvName)
+        val selectionOverlay: View = itemView.findViewById(R.id.vSelectionOverlay)
+        val checkBadge: View = itemView.findViewById(R.id.vCheckBadge)
     }
 
-    fun folderForMode(context: Context, mode: Mode): String = when (mode) {
-        Mode.BLOCCHI -> getBlocchiFolderName(context)
-        Mode.LASTRE -> getLastreFolderName(context)
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+        val v = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_gallery_photo, parent, false)
+        return VH(v)
+    }
+
+    override fun onBindViewHolder(holder: VH, position: Int) {
+        val item = getItem(position)
+        holder.name.text = item.displayName
+
+        val isSelected = selected.contains(item.uri)
+        holder.selectionOverlay.visibility = if (isSelected) View.VISIBLE else View.GONE
+        holder.checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
+
+        // Cancel previous job for this slot
+        thumbnailJobs[holder.bindingAdapterPosition]?.cancel()
+        holder.image.setImageBitmap(null)
+
+        val ctx = holder.itemView.context
+        val job = CoroutineScope(Dispatchers.Main).launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                try {
+                    ctx.contentResolver.loadThumbnail(item.uri, Size(300, 300), null)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            if (bitmap != null) {
+                holder.image.setImageBitmap(bitmap)
+            }
+        }
+        thumbnailJobs[holder.bindingAdapterPosition] = job
+
+        holder.itemView.setOnClickListener { onTap(item) }
+        holder.itemView.setOnLongClickListener {
+            onLongPress(item)
+            true
+        }
+    }
+
+    override fun onViewRecycled(holder: VH) {
+        super.onViewRecycled(holder)
+        thumbnailJobs[holder.bindingAdapterPosition]?.cancel()
+        holder.image.setImageBitmap(null)
+    }
+
+    companion object {
+        private val DIFF = object : DiffUtil.ItemCallback<PhotoItem>() {
+            override fun areItemsTheSame(oldItem: PhotoItem, newItem: PhotoItem): Boolean =
+                oldItem.uri == newItem.uri
+            override fun areContentsTheSame(oldItem: PhotoItem, newItem: PhotoItem): Boolean =
+                oldItem == newItem
+        }
     }
 }

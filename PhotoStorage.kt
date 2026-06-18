@@ -1,16 +1,24 @@
 package it.apconsulting.fotocommesse
 
-import android.content.Intent
+import android.content.Context
 
-enum class Mode {
-    BLOCCHI, LASTRE;
+/**
+ * Provider "solo locale": non esegue alcun upload.
+ *
+ * La foto è già salvata localmente da MediaStore in Pictures/{cartella}/.
+ * La sincronizzazione verso il cloud è demandata a un'app esterna (es. FolderSync),
+ * esattamente come nel funzionamento attuale dell'app.
+ *
+ * upload() è quindi un no-op che ritorna sempre Success.
+ */
+class LocalOnlyProvider : SyncProvider {
 
-    companion object {
-        const val EXTRA_MODE = "section_mode"
+    override val type: SyncProviderType = SyncProviderType.LOCAL_ONLY
 
-        fun fromIntent(intent: Intent?): Mode {
-            val name = intent?.getStringExtra(EXTRA_MODE) ?: return BLOCCHI
-            return runCatching { valueOf(name) }.getOrDefault(BLOCCHI)
-        }
+    override fun isConfigured(context: Context): Boolean = true
+
+    override suspend fun upload(context: Context, item: SyncItem): SyncResult {
+        // Nessuna azione: la sync è gestita esternamente.
+        return SyncResult.Success
     }
 }

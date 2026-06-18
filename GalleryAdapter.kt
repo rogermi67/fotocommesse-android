@@ -1,10 +1,16 @@
 package it.apconsulting.fotocommesse
 
-import com.journeyapps.barcodescanner.CaptureActivity
+import android.content.Intent
 
-/**
- * CaptureActivity custom che NON forza l'orientamento landscape (default della libreria ZXing).
- * L'orientamento effettivo è definito nell'AndroidManifest con screenOrientation="fullSensor",
- * così la schermata di scansione segue l'orientamento fisico del dispositivo.
- */
-class OrientationCaptureActivity : CaptureActivity()
+enum class Mode {
+    BLOCCHI, LASTRE;
+
+    companion object {
+        const val EXTRA_MODE = "section_mode"
+
+        fun fromIntent(intent: Intent?): Mode {
+            val name = intent?.getStringExtra(EXTRA_MODE) ?: return BLOCCHI
+            return runCatching { valueOf(name) }.getOrDefault(BLOCCHI)
+        }
+    }
+}

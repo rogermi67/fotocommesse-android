@@ -1,35 +1,32 @@
 package it.apconsulting.fotocommesse
 
-import android.content.Intent
-import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
-import it.apconsulting.fotocommesse.databinding.ActivityLandingBinding
+import android.content.Context
 
-class LandingActivity : AppCompatActivity() {
+/**
+ * Contratto astratto per un metodo di sincronizzazione delle foto.
+ *
+ * Ogni implementazione concreta (LocalOnly, pCloud, Dropbox, OneDrive, REST...)
+ * sa caricare una foto verso una destinazione, senza che il resto dell'app
+ * debba conoscere i dettagli. Pattern Strategy.
+ */
+interface SyncProvider {
 
-    private lateinit var binding: ActivityLandingBinding
+    /** Tipo del provider. */
+    val type: SyncProviderType
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding = ActivityLandingBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+    /**
+     * Indica se il provider è configurato e pronto all'uso
+     * (es. credenziali presenti, account collegato).
+     * LocalOnly è sempre pronto.
+     */
+    fun isConfigured(context: Context): Boolean
 
-        setSupportActionBar(binding.toolbar)
-
-        binding.cardBlocchi.setOnClickListener {
-            startActivity(
-                Intent(this, MainActivity::class.java).apply {
-                    putExtra(Mode.EXTRA_MODE, Mode.BLOCCHI.name)
-                }
-            )
-        }
-
-        binding.cardLastre.setOnClickListener {
-            startActivity(
-                Intent(this, MainActivity::class.java).apply {
-                    putExtra(Mode.EXTRA_MODE, Mode.LASTRE.name)
-                }
-            )
-        }
-    }
+    /**
+     * Carica una foto verso la destinazione del provider.
+     * È una funzione sospendibile: va invocata da una coroutine / worker.
+     *
+     * @return SyncResult.Success se l'upload è andato a buon fine (o non necessario),
+     *         SyncResult.Failure altrimenti.
+     */
+    suspend fun upload(context: Context, item: SyncItem): SyncResult
 }
