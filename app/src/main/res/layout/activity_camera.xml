@@ -79,9 +79,22 @@
             android:layout_height="1dp"
             android:layout_weight="1" />
 
-        <Space
+        <FrameLayout
             android:layout_width="80dp"
-            android:layout_height="1dp" />
+            android:layout_height="80dp">
+
+            <ImageView
+                android:id="@+id/ivLastThumbnail"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_gravity="center"
+                android:background="#22FFFFFF"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/cd_last_photo"
+                android:scaleType="centerCrop"
+                android:visibility="invisible" />
+        </FrameLayout>
 
     </LinearLayout>
 
